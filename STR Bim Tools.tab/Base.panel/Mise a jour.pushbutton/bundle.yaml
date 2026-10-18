@@ -1,11 +1,12 @@
 title: Mise à jour
 tooltip: >
-  Met a jour l'extension STR BIM Tools depuis son depot GitHub.
+  Met a jour l'extension STR BIM Tools et ses modules (CAN 241)
+  depuis leurs depots GitHub.
   Affiche les nouveautes disponibles (date et description de chaque
   modification), telecharge la derniere version puis recharge pyRevit.
   Utilise le token saisi dans le gestionnaire d'extensions pyRevit.
 author: Tony VARIN
-version: 1.0.0
+version: 1.1.0
 min_revit_ver: 2024
 context: zero-doc
 engine:

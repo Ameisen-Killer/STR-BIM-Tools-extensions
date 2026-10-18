@@ -2,14 +2,14 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.0.0"
+SCRIPT_VERSION = "1.1.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Mise a jour STR BIM Tools"
 # =============================================================================
 #
-# Met a jour l'extension depuis son depot GitHub (git fetch + pull via
-# l'updater pyRevit, qui reutilise le token enregistre dans le gestionnaire
-# d'extensions), puis recharge pyRevit.
+# Met a jour l'extension et ses modules (CAN 241...) depuis leurs depots
+# GitHub (git fetch + pull via l'updater pyRevit, qui reutilise le token
+# enregistre dans le gestionnaire d'extensions), puis recharge pyRevit.
 #
 # =============================================================================
 
@@ -59,7 +59,7 @@ try:
 
     XAML = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="640" Height="440" MinWidth="480" MinHeight="320"
+        Width="720" Height="460" MinWidth="480" MinHeight="320"
         WindowStartupLocation="CenterScreen" Background="White" ResizeMode="CanResize">
       <Grid>
         <Grid.RowDefinitions>
@@ -96,6 +96,7 @@ try:
             </Style>
           </DataGrid.ColumnHeaderStyle>
           <DataGrid.Columns>
+            <DataGridTextColumn x:Name="col_module" Binding="{Binding Module}" Width="110"/>
             <DataGridTextColumn x:Name="col_date" Binding="{Binding Date}" Width="120"/>
             <DataGridTextColumn x:Name="col_msg" Binding="{Binding Message}" Width="*"/>
           </DataGrid.Columns>
@@ -118,10 +119,48 @@ try:
       </Grid>
     </Window>"""
 
+    # Depots GitHub de STR BIM Tools (extension principale + modules)
+    _MARQUE_DEPOT = "ameisen-killer/str-bim-tools"
+    _NOMS_MODULES = {
+        "str-bim-tools-extensions": u"STR BIM Tools",
+        "str-bim-tools-can241":     u"CAN 241",
+    }
+
     class CommitRow(object):
-        def __init__(self, commit):
+        def __init__(self, module, commit):
+            self.Module  = module
             self.Date    = commit.Author.When.LocalDateTime.ToString("dd.MM.yyyy HH:mm")
             self.Message = commit.MessageShort
+
+    def _url_origine(repo):
+        for remote in repo.Network.Remotes:
+            return (remote.Url or "").lower()
+        return ""
+
+    def _nom_module(repo):
+        url = _url_origine(repo).rstrip("/")
+        if url.endswith(".git"):
+            url = url[:-4]
+        cle = url.split("/")[-1]
+        return _NOMS_MODULES.get(cle, cle)
+
+    def _depots_str():
+        """RepoInfo de chaque extension STR installee depuis GitHub."""
+        depots, vus = [], set()
+        try:
+            for ri in updater.get_thirdparty_ext_repos():
+                if _MARQUE_DEPOT in _url_origine(ri.repo):
+                    depots.append(ri)
+                    vus.add(os.path.normcase(os.path.normpath(ri.directory)))
+        except Exception:
+            pass
+        # Filet : toujours inclure le depot de ce bouton
+        own = libgit.libgit.Repository.Discover(EXT_ROOT)
+        if own:
+            ri = libgit.get_repo(own)
+            if os.path.normcase(os.path.normpath(ri.directory)) not in vus:
+                depots.insert(0, ri)
+        return depots
 
     def _fmt_commit(commit):
         return u"{} du {}".format(
@@ -146,8 +185,8 @@ try:
             return False
 
     def main():
-        repo_path = libgit.libgit.Repository.Discover(EXT_ROOT)
-        if not repo_path:
+        depots = _depots_str()
+        if not depots:
             _show_info(_TITRE,
                        u"Cette copie de STR BIM Tools n'a pas été installée depuis "
                        u"GitHub, elle ne peut donc pas être mise à jour ici.\n\n"
@@ -156,61 +195,67 @@ try:
                        warning=True)
             return
 
-        repo_info = libgit.get_repo(repo_path)
-        repo = repo_info.repo
-        if repo.Head.TrackedBranch is None:
-            _show_info(_TITRE,
-                       u"La branche locale « {} » ne suit aucune branche distante."
-                       .format(repo_info.branch), warning=True)
-            return
-
+        lignes, a_jour, versions, alertes, echecs = [], [], [], [], []
         Mouse.OverrideCursor = Cursors.Wait
         try:
-            ok = updater.get_updates(repo_info)
+            for ri in depots:
+                repo   = ri.repo
+                module = _nom_module(repo)
+                versions.append(u"{} : {}".format(module, _fmt_commit(repo.Head.Tip)))
+                if repo.Head.TrackedBranch is None:
+                    echecs.append(module)
+                    continue
+                if not updater.get_updates(ri):
+                    echecs.append(module)
+                    continue
+                nouveaux = _nouveaux_commits(repo)
+                if nouveaux:
+                    a_jour.append(ri)
+                    lignes.extend(CommitRow(module, c) for c in nouveaux)
+                if _a_modifs_locales(repo):
+                    alertes.append(u"{} : des fichiers ont été modifiés sur ce poste, la "
+                                   u"mise à jour peut échouer s'ils ont aussi changé sur "
+                                   u"GitHub.".format(module))
+                div = libgit.compare_branch_heads(ri)
+                en_avance = (div.AheadBy or 0) if div is not None else 0
+                if en_avance:
+                    alertes.append(u"{} : {} modification(s) locale(s) non envoyée(s) sur "
+                                   u"GitHub.".format(module, en_avance))
         finally:
             Mouse.OverrideCursor = None
-        if not ok:
-            _show_info(_TITRE,
-                       u"Impossible de contacter le dépôt GitHub.\n\n"
-                       u"Vérifie ta connexion internet. Si elle fonctionne, le token "
-                       u"a peut-être expiré : saisis-en un nouveau dans le "
-                       u"gestionnaire d'extensions pyRevit.", warning=True)
-            return
 
-        nouveaux = _nouveaux_commits(repo)
-        div      = libgit.compare_branch_heads(repo_info)
-        en_avance = (div.AheadBy or 0) if div is not None else 0
+        if echecs:
+            alertes.insert(0, u"Dépôt injoignable : {}. Vérifie ta connexion internet ou "
+                              u"saisis un nouveau token dans le gestionnaire d'extensions "
+                              u"pyRevit.".format(u", ".join(echecs)))
 
         stream = System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(XAML))
         window = System.Windows.Markup.XamlReader.Load(stream)
         window.Title = _TITRE
         window.FindName("lbl_titre").Text  = u"{}  |  Revit {}".format(_TITRE, app.VersionNumber)
         window.FindName("lbl_footer").Text = _FOOTER
-        window.FindName("col_date").Header = u"Date"
-        window.FindName("col_msg").Header  = u"Nouveautés"
-        window.FindName("lbl_local").Text  = u"Version installée : " + _fmt_commit(repo.Head.Tip)
+        window.FindName("col_module").Header = u"Module"
+        window.FindName("col_date").Header   = u"Date"
+        window.FindName("col_msg").Header    = u"Nouveautés"
+        window.FindName("lbl_local").Text    = (u"Version installée :\n" +
+                                                u"\n".join(versions))
 
         btn_update = window.FindName("btn_update")
         btn_close  = window.FindName("btn_close")
         btn_update.Content = u"Mettre à jour"
         btn_close.Content  = u"Fermer"
 
-        if nouveaux:
+        if lignes:
             window.FindName("lbl_statut").Text = (
-                u"{} nouveauté(s) disponible(s).".format(len(nouveaux)))
-            window.FindName("dg_commits").ItemsSource = [CommitRow(c) for c in nouveaux]
+                u"{} nouveauté(s) disponible(s).".format(len(lignes)))
+            window.FindName("dg_commits").ItemsSource = lignes
         else:
-            window.FindName("lbl_statut").Text = u"STR BIM Tools est à jour."
+            window.FindName("lbl_statut").Text = (
+                u"Mise à jour impossible." if echecs and len(echecs) == len(depots)
+                else u"STR BIM Tools est à jour.")
             btn_update.IsEnabled = False
             btn_update.Opacity   = 0.5
 
-        alertes = []
-        if _a_modifs_locales(repo):
-            alertes.append(u"Des fichiers de l'extension ont été modifiés sur ce poste : "
-                           u"la mise à jour peut échouer s'ils ont aussi changé sur GitHub.")
-        if en_avance:
-            alertes.append(u"{} modification(s) locale(s) n'ont pas été envoyées sur GitHub."
-                           .format(en_avance))
         if alertes:
             lbl = window.FindName("lbl_alerte")
             lbl.Text = u"\n".join(alertes)
@@ -220,14 +265,18 @@ try:
 
         def on_update(sender, args):
             window.Cursor = Cursors.Wait
-            try:
-                updater.update_repo(repo_info)
-                state["updated"] = True
-                window.Close()
-            except Exception as ex:
-                window.Cursor = None
-                _show_info(_TITRE,
-                           u"La mise à jour a échoué :\n\n{}".format(ex), warning=True)
+            erreurs = []
+            for ri in a_jour:
+                try:
+                    updater.update_repo(ri)
+                    state["updated"] = True
+                except Exception as ex:
+                    erreurs.append(u"{} : {}".format(_nom_module(ri.repo), ex))
+            window.Cursor = None
+            if erreurs:
+                _show_info(_TITRE, u"La mise à jour a échoué :\n\n" + u"\n\n".join(erreurs),
+                           warning=True)
+            window.Close()
 
         btn_update.Click += on_update
         btn_close.Click  += lambda s, e: window.Close()
