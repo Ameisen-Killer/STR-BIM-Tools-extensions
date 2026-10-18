@@ -14,8 +14,3 @@ Extension pyRevit (Revit 2024 et supérieur) de Tony VARIN.
 Pousser les modifications sur `main`, puis bouton **Update** de pyRevit sur chaque poste.
 
 Les fichiers `prefs.json` et `can241_*.json` sont propres à chaque poste et ne sont pas suivis.
-
-## Modules sur autorisation
-
-Le module **CAN 241** est dans un dépôt privé séparé (`STR-BIM-Tools-CAN241`) :
-il ne s'installe qu'avec un token fourni par Tony VARIN.
