@@ -1,0 +1,20 @@
+# Python / IronPython
+*.pyc
+__pycache__/
+
+# Préférences et réglages écrits par les outils sur chaque poste
+prefs.json
+can241_config.json
+can241_phases.json
+
+# Réglages locaux Claude Code
+.claude/
+
+# Anciennes sauvegardes de scripts (l'historique Git les remplace)
+*.zip
+*.rar
+
+# Fichiers temporaires Office / Windows
+~$*
+Thumbs.db
+desktop.ini

@@ -1,0 +1,7 @@
+title: Bissectrice
+tooltip: >
+  Cree une ligne de modele bissectrice de l'angle forme par deux lignes droites.
+  Selectionnez les 2 lignes par clic direct — la bissectrice est centree
+  sur le point d'intersection, de longueur egale a la moyenne des deux sources.
+author: Tony VARIN
+min_revit_ver: 2024

@@ -1,0 +1,8 @@
+title: Export Nomenclatures Excel
+tooltip: >
+  Exporte les nomenclatures Revit sélectionnées vers un fichier Excel (.xlsx).
+  Un onglet par nomenclature, plus un onglet Resume avec les infos du projet.
+  Sélection multiple avec filtre par nom, dossier mémorisé entre les sessions.
+author: Tony VARIN
+version: 2.6.0
+min_revit_ver: 2024

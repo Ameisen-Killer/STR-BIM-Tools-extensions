@@ -1,0 +1,12 @@
+title: FGH Tools Box
+
+tooltip: >
+  Outils de gestion des réservations dans le cadre du dossier Fairmont.
+
+author: Tony VARIN
+
+layout:
+  - Ne pas toucher
+  - ----
+  - Transfert Reservations
+  - Purge Reservations

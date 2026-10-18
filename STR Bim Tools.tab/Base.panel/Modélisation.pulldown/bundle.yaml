@@ -1,0 +1,16 @@
+title: Modélisation
+tooltip: Aide à la modélisation
+
+layout:
+  - Copie au meme emplacement
+  - ----
+  - Decoupage des murs par niveau
+  - Detacher Geometrie
+  - ----
+  - Editeur de contraintes multiples
+  - Editeur de contraintes unique
+  - ----
+  - Parametres Familles
+  - ----
+  - Convertir Geometrie en Famille
+  - IFC vers Famille RFA

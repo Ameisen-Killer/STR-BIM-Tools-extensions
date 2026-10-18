@@ -1,0 +1,9 @@
+title: Masquer
+tooltip: >
+  Masque dans la vue active les elements selectionnes (equivalent de la
+  commande native Revit "Masquer les elements"). Les elements ne
+  supportant pas le masquage dans cette vue sont ignores. Selectionnez
+  les elements avant de cliquer sur le bouton.
+author: Tony VARIN
+version: 1.0.0
+min_revit_ver: 2024

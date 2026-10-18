@@ -1,0 +1,6 @@
+title: Jaune
+tooltip: >
+  Passe les réservations en Jaune via le Filtre STR_RES_H_CIRC/RECT
+author: Tony VARIN
+version: 1.0.0
+min_revit_ver: 2024

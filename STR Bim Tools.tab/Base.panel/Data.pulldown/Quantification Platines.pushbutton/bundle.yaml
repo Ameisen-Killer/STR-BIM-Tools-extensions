@@ -1,0 +1,14 @@
+title: Quantification Platines
+tooltip: >
+  Quantifie toutes les platines du modele. Deux sources cumulables :
+  les assemblages structurels acier (plaques d'assemblage, ou a defaut les solides
+  plats extraits de la geometrie des assemblages, boulons et soudures ecartes),
+  et les familles ou DirectShape dont le nom contient un mot-cle ("platine" par defaut).
+  Les platines identiques sont regroupees avec leur nombre : epaisseur mesuree sur la
+  geometrie reelle, dimensions A x B, materiau, masse unitaire et masse totale.
+  Option "modeles lies" pour balayer aussi les liens Revit.
+  Bouton Selectionner pour isoler les occurrences dans Revit, export XLSX en 3 feuilles
+  (regroupement, detail par occurrence, synthese par epaisseur / materiau / assemblage).
+author: Tony VARIN
+version: 2.2.0
+min_revit_ver: 2024

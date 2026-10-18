@@ -1,0 +1,9 @@
+title: Export PDF-DWG multiple
+tooltip: >
+  Exporte plusieurs feuilles du projet en PDF et/ou DWG (AutoCAD 2018).
+  Selection multiple avec filtre par numero GED, cochage individuel ou global.
+  Nommage automatique selon la convention GED suisse (segments A a H + revision).
+  Le dernier dossier utilise est memorise entre les sessions.
+author: Tony VARIN
+version: 2.3.0
+min_revit_ver: 2024
