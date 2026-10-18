@@ -1,0 +1,36 @@
+# Controle automatique STR BIM Tools : a chaque envoi sur GitHub, verifie que
+# les scripts et les bundle.yaml se chargeront dans pyRevit (Revit 2024+).
+# Detail des controles : _dev/syntaxe_py27.py et _dev/controle_auto.py.
+# Le depot prive CAN 241 reutilise ces deux scripts.
+name: Controle STR BIM Tools
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  controle:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Syntaxe IronPython 2.7
+        run: >
+          docker run --rm -v "$PWD:/depot:ro" -w /depot
+          -e GITHUB_ACTIONS -e PYTHONIOENCODING=utf-8 -e LANG=C.UTF-8
+          python:2.7.18-slim python -B _dev/syntaxe_py27.py .
+
+      - uses: actions/setup-python@v6
+        if: success() || failure()
+        with:
+          python-version: "3.12"
+
+      - name: Fichiers, bundle.yaml, API Revit et conventions
+        if: success() || failure()
+        run: |
+          pip install --quiet pyyaml==6.0.2
+          python -B _dev/controle_auto.py --depot-public
