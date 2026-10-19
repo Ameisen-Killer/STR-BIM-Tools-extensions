@@ -2,10 +2,13 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.0.0"
+SCRIPT_VERSION = "1.1.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = u"À propos"
 SITE           = u"www.str-bim-tools.com"
+# =============================================================================
+#  v1.1.0 - Fenetre reduite a l'embleme STR BIM Tools (logo.png) et au lien
+#           vers le site.
 # =============================================================================
 
 import clr, traceback
@@ -33,105 +36,67 @@ try:
     from System import Uri
     from System.Diagnostics import Process
     from System.Windows import (Window, Thickness, WindowStartupLocation,
-                                ResizeMode, TextWrapping, VerticalAlignment)
-    from System.Windows.Controls import Grid, StackPanel
+                                ResizeMode, SizeToContent, HorizontalAlignment)
+    from System.Windows.Controls import Grid, StackPanel, Image
     from System.Windows.Documents import Hyperlink, Run
+    from System.Windows.Media import RenderOptions, BitmapScalingMode
+    from System.Windows.Media.Imaging import BitmapImage, BitmapCacheOption
 
     import str_ui as UI
 
-    LARGEUR = 520
-    HAUTEUR = 430
+    LOGO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+    TAILLE_LOGO = 300
+    # Fond du corps = bleu nuit des coins de l'embleme : le cercle flotte
+    # sans cadre carre autour.
+    FOND = "#010F27"
+    LIEN = "#7FB8FF"
 
-    # Quatre principes de conception, volontairement generaux : cette
-    # fenetre reste neutre et ne cite aucun contexte professionnel.
-    PRINCIPES = [
-        (u"La règle métier est une donnée, pas du code",
-         u"Normes, catalogues et listes de valeurs vivent dans des fichiers "
-         u"de référence. Une valeur qui change ne demande aucune reprise de "
-         u"programme."),
-        (u"Rien n'est écrit sans un geste explicite",
-         u"Les outils lisent et rapportent. Ce qu'ils écrivent, vous l'avez "
-         u"demandé ligne par ligne, et cela s'annule d'un Ctrl+Z."),
-        (u"Ce qui échoue se dit",
-         u"Un refus, une valeur illisible, un contrôle interrompu sont "
-         u"rapportés nommément. Aucun échec n'est avalé en silence."),
-        (u"Chaque outil sait dire ce qu'il ne fait pas",
-         u"Les limites connues sont écrites dans les notices, au même titre "
-         u"que les fonctions."),
-    ]
-
-    def _nb_outils():
-        """Compte les boutons du ruban. Purement informatif : en cas de doute
-        on n'affiche rien plutôt qu'un chiffre faux."""
-        try:
-            racine = os.path.dirname(os.path.dirname(os.path.dirname(
-                os.path.dirname(os.path.abspath(__file__)))))
-            n = 0
-            for dossier, sous, _fichiers in os.walk(racine):
-                n += len([d for d in sous if d.endswith(".pushbutton")])
-            return n
-        except Exception:
-            return 0
+    def _image_logo():
+        """Embleme en TAILLE_LOGO px, ou None si le fichier manque : la
+        fenetre s'ouvre quand meme avec le seul lien."""
+        if not os.path.isfile(LOGO):
+            return None
+        bmp = BitmapImage()
+        bmp.BeginInit()
+        bmp.UriSource = Uri(LOGO)
+        bmp.CacheOption = BitmapCacheOption.OnLoad   # ne verrouille pas le fichier
+        bmp.EndInit()
+        img = Image()
+        img.Source = bmp
+        img.Width = TAILLE_LOGO
+        img.Height = TAILLE_LOGO
+        RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality)
+        return img
 
     class APropos(Window):
 
         def __init__(self):
             self.Title = u"STR BIM Tools - {0}".format(TOOL_NAME)
-            self.Width = LARGEUR
-            self.Height = HAUTEUR
-            self.MinWidth = 440
-            self.MinHeight = 380
+            self.SizeToContent = SizeToContent.WidthAndHeight
             self.WindowStartupLocation = WindowStartupLocation.CenterScreen
-            self.ResizeMode = ResizeMode.CanResize
+            self.ResizeMode = ResizeMode.NoResize
             self.Background = UI.couleur("fond")
             self._construire()
 
         def _construire(self):
             root = Grid()
-            for h in ["Auto", "*", "Auto"]:
+            for h in ["*", "Auto"]:
                 root.RowDefinitions.Add(UI.rd(h))
             self.Content = root
 
-            titre = UI.barre_titre(u"STR BIM Tools")
-            Grid.SetRow(titre, 0)
-            root.Children.Add(titre)
-
             corps = StackPanel()
-            corps.Margin = Thickness(16, 10, 16, 10)
-
-            intro = UI.texte(
-                u"Une boîte à outils Revit pour l'ingénierie structure, "
-                u"bâtie sur quatre principes.", 11)
-            intro.TextWrapping = TextWrapping.Wrap
-            intro.Margin = Thickness(0, 0, 0, 8)
-            corps.Children.Add(intro)
-
-            gb = UI.group_box()
-            interne = StackPanel()
-            for i, (titre_p, detail) in enumerate(PRINCIPES):
-                t = UI.texte(u"{0}. {1}".format(i + 1, titre_p), 11, gras=True,
-                             brush=UI.couleur("titre"),
-                             marge=Thickness(0, 6 if i else 0, 0, 1))
-                t.TextWrapping = TextWrapping.Wrap
-                interne.Children.Add(t)
-                d = UI.texte(detail, 10, brush=UI.couleur("texte_gris"))
-                d.TextWrapping = TextWrapping.Wrap
-                d.VerticalAlignment = VerticalAlignment.Top
-                interne.Children.Add(d)
-            gb.Child = interne
-            corps.Children.Add(gb)
-
-            n = _nb_outils()
-            ligne = u"{0}  |  Revit 2024 et suivants".format(
-                u"{0} outils".format(n) if n else u"pyRevit")
-            corps.Children.Add(UI.texte(ligne, 10,
-                                        brush=UI.couleur("texte_gris"),
-                                        marge=Thickness(0, 8, 0, 0)))
+            corps.Background = UI.hex_brush(FOND)
+            img = _image_logo()
+            if img is not None:
+                img.Margin = Thickness(24, 20, 24, 4)
+                corps.Children.Add(img)
 
             # Lien cliquable : un TextBlock ne suffit pas, il faut un
             # Hyperlink et l'ouverture par le navigateur du poste.
-            lien_tb = UI.texte(u"", 12, marge=Thickness(0, 6, 0, 0))
+            lien_tb = UI.texte(u"", 13, marge=Thickness(24, 4, 24, 18))
+            lien_tb.HorizontalAlignment = HorizontalAlignment.Center
             lien = Hyperlink(Run(SITE))
+            lien.Foreground = UI.hex_brush(LIEN)
             try:
                 lien.NavigateUri = Uri(u"https://" + SITE)
             except Exception:
@@ -140,11 +105,11 @@ try:
             lien_tb.Inlines.Add(lien)
             corps.Children.Add(lien_tb)
 
-            Grid.SetRow(corps, 1)
+            Grid.SetRow(corps, 0)
             root.Children.Add(corps)
 
             footer, sp_btns, grid_f = UI.make_footer(SCRIPT_VERSION)
-            Grid.SetRow(footer, 2)
+            Grid.SetRow(footer, 1)
             root.Children.Add(footer)
             sp_btns.Children.Add(UI.footer_btn(u"Fermer", "fermer", 90,
                                                lambda s, e: self.Close()))
