@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 element_constraint_editor_multi.py
 Script pyRevit - Revit 2024
@@ -7,6 +8,13 @@ Calcul automatique du niveau le plus proche en Z (filtre par emprise XY).
 Pour la contrainte haute : si aucun niveau valide XY n'est au-dessus du Z haut,
 fallback sur tous les niveaux (sans filtre XY).
 """
+# =============================================================================
+# CONFIG
+# =============================================================================
+SCRIPT_VERSION = "1.0.0"
+SCRIPT_AUTHOR  = "Tony VARIN"
+TOOL_NAME      = u"Editeur de contraintes multiples"
+# =============================================================================
 
 import clr
 clr.AddReference("RevitAPI")
@@ -34,6 +42,7 @@ import System.Drawing as Drawing
 
 doc   = __revit__.ActiveUIDocument.Document
 uidoc = __revit__.ActiveUIDocument
+_FOOTER = u"v{} | STR BIM Tools by Tony Varin".format(SCRIPT_VERSION)
 
 
 # --- Helpers ------------------------------------------------------------------
@@ -276,7 +285,7 @@ class ReportForm(WinForms.Form):
 
         ok_count  = sum(1 for d in self.results if not d["error"])
         err_count = len(self.errors)
-        panel_h   = 85 if self.errors else 48
+        panel_h   = (85 if self.errors else 48) + 18   # + ligne de footer
 
         panel = WinForms.Panel()
         panel.Dock      = WinForms.DockStyle.Bottom
@@ -305,6 +314,14 @@ class ReportForm(WinForms.Form):
             lbl_err.Size      = Drawing.Size(840, 36)
             lbl_err.ForeColor = Drawing.Color.Red
             panel.Controls.Add(lbl_err)
+
+        lbl_ftr = WinForms.Label()
+        lbl_ftr.Text      = _FOOTER
+        lbl_ftr.Location  = Drawing.Point(10, panel_h - 20)
+        lbl_ftr.Size      = Drawing.Size(400, 16)
+        lbl_ftr.Font      = Drawing.Font("Segoe UI", 8)
+        lbl_ftr.ForeColor = Drawing.Color.FromArgb(136, 136, 136)
+        panel.Controls.Add(lbl_ftr)
 
         btn = WinForms.Button()
         btn.Text     = u"Fermer"

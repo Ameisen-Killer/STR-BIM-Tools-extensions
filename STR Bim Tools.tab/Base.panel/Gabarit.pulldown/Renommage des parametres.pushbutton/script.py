@@ -2,13 +2,13 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "3.0"
+SCRIPT_VERSION = "3.0.1"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Renommage Parametres Partages"
 # =============================================================================
 __title__ = "Renommage\nParametres"
 __doc__ = "Renomme les parametres partages du projet (modifie le fichier .txt puis recree la liaison)."
-__version__ = "3.0"
+__version__ = "3.0.1"
 
 import os, shutil, unicodedata, clr
 from datetime import datetime
@@ -272,6 +272,8 @@ XAML = u"""
         <ColumnDefinition Width="Auto"/>
         <ColumnDefinition Width="Auto"/>
       </Grid.ColumnDefinitions>
+      <TextBlock x:Name="LblFooter" Grid.Column="0" FontSize="10"
+                 Foreground="#888888" VerticalAlignment="Center"/>
       <Button x:Name="BtnCancel" Grid.Column="1" Content="Annuler"
               Width="110" Margin="0,0,8,0" Padding="8,5"
               Background="#3A3A3A" Foreground="#CCCCCC" BorderBrush="#555555"/>
@@ -322,8 +324,11 @@ all_rows.sort(key=lambda r: (r.Groupe, r.OldName))
 # ─────────────────────────────────────────────────────────────────────────────
 # Fenetre WPF
 # ─────────────────────────────────────────────────────────────────────────────
+_FOOTER = u"v{} | STR BIM Tools by Tony Varin".format(SCRIPT_VERSION)
+
 window        = XamlReader.Parse(XAML)
 window.Title  = TOOL_NAME
+window.FindName('LblFooter').Text = _FOOTER
 param_grid    = window.FindName('ParamGrid')
 filter_box    = window.FindName('FilterBox')
 btn_normalize = window.FindName('BtnNormalize')

@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.0.0"
+SCRIPT_VERSION = "1.0.1"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Geom vers Famille"
 # =============================================================================
@@ -37,7 +37,8 @@ from Autodesk.Revit.DB import (
     BooleanOperationsType, BooleanOperationsUtils,
     Transform, XYZ,
     SaveAsOptions,
-    ElementId
+    ElementId,
+    IFamilyLoadOptions, FamilySource
 )
 
 try:
@@ -864,14 +865,16 @@ def main():
 
     if state.get("reload"):
         try:
-            from Autodesk.Revit.DB import FamilyLoadOptions
-            class LoadOpt(object):
+            # IronPython passe les parametres ref de l'interface sous forme de
+            # StrongBox : il faut renseigner .Value (reaffecter le nom ne fait rien).
+            class LoadOpt(IFamilyLoadOptions):
                 def OnFamilyFound(self, fam_in_doc, overwrite_param_values):
-                    overwrite_param_values = True
+                    overwrite_param_values.Value = True
                     return True
                 def OnSharedFamilyFound(self, sf, fam_exists, src, overwrite_param_values):
-                    overwrite_param_values = True
-                    return __import__('Autodesk.Revit.DB', fromlist=['FamilySource']).FamilySource.Family
+                    src.Value = FamilySource.Family
+                    overwrite_param_values.Value = True
+                    return True
 
             with Transaction(doc, u"STR - Recharger famille") as t:
                 t.Start()
