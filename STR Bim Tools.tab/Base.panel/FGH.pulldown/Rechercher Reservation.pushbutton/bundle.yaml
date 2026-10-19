@@ -1,0 +1,30 @@
+title: "Rechercher\nResa"
+tooltip: >
+  Recherche une reservation sur n'importe quel parametre, depuis la maquette STR
+  comme depuis la maquette de percement. L'outil interroge la maquette courante ET
+  tous les liens charges qui contiennent des familles FGH_RES* : il trouve donc la
+  meme reservation des deux cotes en une seule recherche.
+  Trois lignes de criteres cumulables en ET : parametre, mode et valeur sur chacune.
+  Les lignes laissees vides sont ignorees, une seule ligne suffit. Le tableau affiche
+  une colonne de valeur par critere actif, les autres restent masquees.
+  La liste deroulante Parametre est construite a partir des reservations reellement
+  presentes — parametres d'occurrence et de type confondus, ordre alphabetique,
+  frappe au clavier pour aller directement au bon. Les parametres et modes des trois
+  lignes sont memorises entre les sessions ; par defaut PVA_RES_DEM_NumReservation
+  sur la premiere ligne.
+  Cas particulier du N° : il est porte a la fois par PVA_RES_DEM_NumReservation et
+  par l'ADN CONTROL_NE_PAS_TOUCHER, et les deux divergent parfois. Chercher sur le
+  N° interroge donc les deux ; ils restent affiches cote a cote et toute divergence
+  est signalee, de meme qu'une reservation sans ADN.
+  Trois modes : contient, exact, commence par — utile avec les formats de N° qui
+  cohabitent (04-0066 sur quatre chiffres, 04-179 sur trois).
+  Un N° pouvant etre porte par plusieurs reservations (169 doublons cote SPV), les
+  resultats sont une liste : famille, niveau, statut de validation, demandeur et
+  position permettent de distinguer les jumeaux.
+  Selectionner et cadrer agit sur les reservations de la maquette courante ; Vue 3D
+  cree une vue dediee avec boite de coupe, qui fonctionne aussi pour les elements de
+  lien, impossibles a selectionner. Sans selection dans le tableau, l'action porte
+  sur tous les resultats. Export Excel complet.
+author: Tony VARIN
+version: 1.2.0
+min_revit_ver: 2024

@@ -2,9 +2,16 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.6.2"
+SCRIPT_VERSION = "1.7.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Export PDF-DWG Vue Active"
+
+# Taille de la fenetre de progression (unites WPF). Propre a cet outil : les
+# libelles affiches sont des noms de fichiers et de feuilles longs, la taille
+# standard de str_progress_sta les tronque. Mettre a None pour revenir a la
+# taille partagee par les autres outils.
+PROG_LARGEUR = 800
+PROG_HAUTEUR = None
 # =============================================================================
 
 import clr, os, io, json, traceback
@@ -26,7 +33,7 @@ from System.Windows import (
     MessageBox, MessageBoxButton, MessageBoxImage,
 )
 from System.Windows.Controls import (
-    Grid, StackPanel, Border, TextBlock, Button, Label,
+    Grid, StackPanel, Border, TextBlock, TextBox, Button, Label,
     CheckBox, GroupBox, DockPanel, ScrollViewer, ProgressBar,
     RowDefinition, ColumnDefinition, Orientation, ComboBox,
 )
@@ -214,6 +221,42 @@ def build_filename_view(view):
     return name.strip()
 
 # =============================================================================
+# Validation du nom de fichier saisi
+# =============================================================================
+# Le nom est libre a la saisie : c'est ici, et seulement ici, qu'on refuse ce
+# qui ferait echouer doc.Export en cours de route, sans message exploitable.
+# Le '?' est volontairement absent de la liste : c'est le marqueur des
+# parametres non renseignes dans le nom suggere. Il declenche l'avertissement
+# de l'export, pas un blocage, pour ne pas changer le comportement existant.
+CHARS_INTERDITS = u'\\/:*"<>|'
+
+def valider_nom_fichier(nom):
+    """Retourne (nom_nettoye, message_erreur_ou_None).
+
+    Ne corrige rien tout seul : un nom invalide doit etre montre a
+    l'utilisateur, pas silencieusement reecrit sous son nez."""
+    nom = (nom or u"").strip()
+    if not nom:
+        return nom, u"Le nom du fichier est vide."
+
+    mauvais = sorted(set(c for c in nom if c in CHARS_INTERDITS))
+    if mauvais:
+        return nom, u"Caractères interdits dans un nom de fichier :  {}".format(
+            u"   ".join(mauvais))
+
+    if nom.endswith(u"."):
+        return nom, u"Le nom ne peut pas se terminer par un point."
+
+    # Noms reserves DOS : Revit echoue sans expliquer pourquoi.
+    racine = nom.split(u".")[0].upper()
+    if racine in (u"CON", u"PRN", u"AUX", u"NUL"):
+        return nom, u"« {} » est un nom réservé par Windows.".format(racine)
+    if len(racine) == 4 and racine[:3] in (u"COM", u"LPT") and racine[3].isdigit():
+        return nom, u"« {} » est un nom réservé par Windows.".format(racine)
+
+    return nom, None
+
+# =============================================================================
 # Fenetre WPF
 # =============================================================================
 class ExportDialog(Window):
@@ -230,9 +273,13 @@ class ExportDialog(Window):
             self._filename = build_filename_view(active_view)
             self._missing  = []
 
+        # Le nom construit a partir des attributs reste la suggestion de
+        # reference : le bouton « Réinitialiser » y revient apres une saisie.
+        self._filename_suggere = self._filename
+
         self.Title     = TOOL_NAME
         self.Width     = 900
-        self.Height    = 560
+        self.Height    = 620
         self.MinWidth  = 580
         self.MinHeight = 460
         self.ResizeMode = SW.ResizeMode.CanResizeWithGrip
@@ -313,19 +360,61 @@ class ExportDialog(Window):
         sp_main.Children.Add(grp_info)
 
         # ── Section : Nom du fichier genere ──────────────────────────────────
-        sp_main.Children.Add(self._section_hdr(u"Nom du fichier généré"))
+        # Le nom reste suggere a partir des attributs de la feuille, mais il est
+        # modifiable : un export ponctuel ne doit pas obliger a toucher aux
+        # parametres de la feuille. Rien n'est reecrit dans le modele.
+        hdr_fname = DockPanel()
+        hdr_fname.LastChildFill = True
 
-        grp_fname      = self._group_box()
-        tb_fname       = TextBlock()
-        tb_fname.Text  = self._filename
-        tb_fname.FontSize    = 11
-        tb_fname.FontFamily  = FontFamily("Consolas")
-        tb_fname.TextWrapping = SW.TextWrapping.Wrap
-        tb_fname.Foreground  = (hex_brush("#C0392B") if self._missing
-                                else hex_brush("#1a3a5c"))
-        tb_fname.FontWeight  = SW.FontWeights.SemiBold
-        grp_fname.Child      = tb_fname
+        btn_reset = Button()
+        btn_reset.Content         = u"Réinitialiser"
+        btn_reset.Height          = 20
+        btn_reset.Padding         = Thickness(8, 0, 8, 0)
+        btn_reset.FontSize        = 10
+        btn_reset.Background      = hex_brush("#7F8C8D")
+        btn_reset.Foreground      = hex_brush("#FFFFFF")
+        btn_reset.FontWeight      = SW.FontWeights.SemiBold
+        btn_reset.BorderThickness = Thickness(0)
+        btn_reset.Margin          = Thickness(6, 4, 0, 3)
+        btn_reset.ToolTip         = u"Revenir au nom suggéré par les attributs de la feuille"
+        btn_reset.Click          += self._on_reset_nom
+        DockPanel.SetDock(btn_reset, SWC.Dock.Right)
+        hdr_fname.Children.Add(btn_reset)
+
+        hdr_fname.Children.Add(
+            self._section_hdr(u"Nom du fichier généré  (modifiable)"))
+        sp_main.Children.Add(hdr_fname)
+
+        grp_fname = self._group_box()
+        sp_fname  = StackPanel()
+
+        self.txt_fname = TextBox()
+        self.txt_fname.Text          = self._filename
+        self.txt_fname.FontSize      = 11
+        self.txt_fname.FontFamily    = FontFamily("Consolas")
+        self.txt_fname.FontWeight    = SW.FontWeights.SemiBold
+        self.txt_fname.Foreground    = hex_brush("#1a3a5c")
+        self.txt_fname.TextWrapping  = SW.TextWrapping.Wrap
+        self.txt_fname.AcceptsReturn = False
+        self.txt_fname.MinHeight     = 34
+        self.txt_fname.Padding       = Thickness(4, 3, 4, 3)
+        self.txt_fname.BorderThickness = Thickness(1)
+        sp_fname.Children.Add(self.txt_fname)
+
+        # Retour visuel sous le champ : fichiers produits, ou motif du refus.
+        self.tb_fname_info              = TextBlock()
+        self.tb_fname_info.FontSize     = 10
+        self.tb_fname_info.TextWrapping = SW.TextWrapping.Wrap
+        self.tb_fname_info.Margin       = Thickness(0, 5, 0, 0)
+        sp_fname.Children.Add(self.tb_fname_info)
+
+        # Branche apres coup : le handler lit tb_fname_info, qui doit exister.
+        self.txt_fname.TextChanged += self._on_nom_change
+
+        grp_fname.Child = sp_fname
         sp_main.Children.Add(grp_fname)
+
+        self._rafraichir_info_nom()
 
         # ── Section : Parametres manquants (feuille seulement) ───────────────
         if self._missing:
@@ -583,6 +672,37 @@ class ExportDialog(Window):
         if dlg.ShowDialog() == DialogResult.OK:
             self.tb_folder.Text = dlg.SelectedPath
 
+    def _on_reset_nom(self, s, e):
+        self.txt_fname.Text = self._filename_suggere
+        self.txt_fname.CaretIndex = len(self.txt_fname.Text)
+
+    def _on_nom_change(self, s, e):
+        self._rafraichir_info_nom()
+
+    def _rafraichir_info_nom(self):
+        """Retour immediat sous le champ : fichiers produits, ou motif du refus.
+        L'export revalide de son cote ; ceci n'est que de l'affichage."""
+        nom, err = valider_nom_fichier(self.txt_fname.Text)
+
+        if err:
+            self.txt_fname.BorderBrush    = hex_brush("#C0392B")
+            self.tb_fname_info.Foreground = hex_brush("#C0392B")
+            self.tb_fname_info.Text       = u"⚠  " + err
+            return
+
+        self.txt_fname.BorderBrush = hex_brush("#C0D0E0")
+        if u"?" in nom:
+            self.tb_fname_info.Foreground = hex_brush("#C0392B")
+            self.tb_fname_info.Text = (
+                u"⚠  Des « ? » subsistent : corrigez-les ici, ou renseignez "
+                u"les paramètres de la feuille.")
+        else:
+            self.tb_fname_info.Foreground = hex_brush("#888888")
+            self.tb_fname_info.Text = (
+                u"Suggéré d'après les attributs de la feuille. Les extensions "
+                u".pdf / .dwg sont ajoutées à l'export ; le modèle n'est pas "
+                u"modifié.")
+
     def _on_export(self, s, e):
         export_pdf = bool(self.chk_pdf.IsChecked)
         export_dwg = bool(self.chk_dwg.IsChecked)
@@ -593,6 +713,16 @@ class ExportDialog(Window):
                 TOOL_NAME, MessageBoxButton.OK, MessageBoxImage.Warning)
             return
 
+        # Nom de fichier : suggere a partir des attributs, mais modifiable.
+        # C'est la saisie qui fait foi, pas la suggestion memorisee.
+        nom, err = valider_nom_fichier(self.txt_fname.Text)
+        if err:
+            MessageBox.Show(
+                err, TOOL_NAME, MessageBoxButton.OK, MessageBoxImage.Error)
+            self.txt_fname.Focus()
+            self.txt_fname.SelectAll()
+            return
+
         folder = self.tb_folder.Text.strip()
         if not os.path.isdir(folder):
             MessageBox.Show(
@@ -600,13 +730,30 @@ class ExportDialog(Window):
                 TOOL_NAME, MessageBoxButton.OK, MessageBoxImage.Error)
             return
 
-        # Avertissement parametres manquants (feuille seulement)
-        if self._missing:
+        # Chemin complet trop long : Revit echoue en silence sur les
+        # arborescences profondes (OneDrive + sous-dossiers de phase).
+        longueur = max(len(os.path.join(folder, nom + ext))
+                       for ext in (u".pdf", u".dwg"))
+        if longueur > 255:
+            MessageBox.Show(
+                u"Le chemin complet ferait {} caractères (limite Windows : 255).\n\n"
+                u"Raccourcissez le nom du fichier ou choisissez un dossier "
+                u"moins profond.".format(longueur),
+                TOOL_NAME, MessageBoxButton.OK, MessageBoxImage.Error)
+            self.txt_fname.Focus()
+            return
+
+        # Avertissement : le nom retenu porte encore des '?'. On teste le nom
+        # final, pas self._missing : un parametre vide corrige a la main dans le
+        # champ ne doit plus declencher d'alerte.
+        if u"?" in nom:
+            msg = u"Le nom du fichier contient encore des « ? » :\n\n    {}\n".format(nom)
+            if self._missing:
+                msg += (u"\nParamètres non renseignés sur la feuille :\n"
+                        + u"\n".join(u"  •  " + m for m in self._missing) + u"\n")
+            msg += u"\nContinuer quand même ?"
             res = MessageBox.Show(
-                u"Certains paramètres ne sont pas renseignés :\n\n"
-                + u"\n".join(u"  •  " + m for m in self._missing)
-                + u"\n\nLe nom du fichier contiendra des '???'.\nContinuer quand même ?",
-                u"Paramètres manquants",
+                msg, u"Nom de fichier incomplet",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning)
             if str(res) != "Yes":
                 return
@@ -614,9 +761,9 @@ class ExportDialog(Window):
         # Verification fichiers existants
         to_check = []
         if export_pdf:
-            to_check.append((os.path.join(folder, self._filename + ".pdf"), "PDF"))
+            to_check.append((os.path.join(folder, nom + ".pdf"), "PDF"))
         if export_dwg:
-            to_check.append((os.path.join(folder, self._filename + ".dwg"), "DWG"))
+            to_check.append((os.path.join(folder, nom + ".dwg"), "DWG"))
 
         existing = [lbl for path, lbl in to_check if os.path.isfile(path)]
         if existing:
@@ -634,7 +781,7 @@ class ExportDialog(Window):
         save_last_dwg_setup(dwg_setup_name or u"")
         self._result = {
             "folder"     : folder,
-            "filename"   : self._filename,
+            "filename"   : nom,
             "export_pdf" : export_pdf,
             "export_dwg" : export_dwg,
             "view_id"    : self._view.Id,
@@ -803,7 +950,7 @@ def _confirm_overwrite(existing_labels):
 def show_result(successes, errors, folder=None):
     win = Window()
     win.Title  = TOOL_NAME
-    win.Width  = 480
+    win.Width  = 800
     win.SizeToContent = SW.SizeToContent.Height
     win.MinHeight = 140
     win.ResizeMode = SW.ResizeMode.NoResize
@@ -976,7 +1123,9 @@ def main():
     # bloque le thread principal, une fenetre construite dessus resterait figee
     # pendant tout l'export.
     prog = str_progress_sta.ProgressionSTA(total, TOOL_NAME, SCRIPT_VERSION,
-                                           annulable=False)
+                                           annulable=False,
+                                           largeur=PROG_LARGEUR,
+                                           hauteur=PROG_HAUTEUR)
     suivi = str_progress_revit.SuiviProgressionRevit(prog, app)
     suivi.brancher()
     faits = 0

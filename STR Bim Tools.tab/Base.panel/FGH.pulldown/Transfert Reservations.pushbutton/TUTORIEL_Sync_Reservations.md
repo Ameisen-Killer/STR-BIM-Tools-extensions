@@ -1,11 +1,15 @@
 # Tutoriel — Outil Sync Réservations
-## STR BIM Tools · v3.0.0 · Tony VARIN
+## STR BIM Tools · v3.1.0 · Tony VARIN
 
 ---
 
 > **Comment utiliser ce document**
 > Les marqueurs `[CAPTURE X]` indiquent l'emplacement des captures d'écran à coller depuis le chat de session.
 > Chaque marqueur est accompagné d'une description de ce que montre la capture.
+>
+> Une version courte, mise en page et prête à diffuser existe au format PDF :
+> `doc/FGH_Sync_Reservations.pdf` (6 pages A4). Elle sert de notice de référence ;
+> le présent document reste le support détaillé avec captures.
 
 ---
 
@@ -17,9 +21,10 @@
 4. [Lecture de l'interface principale](#4-lecture-de-linterface-principale)
    - 4.1 Barre de titre
    - 4.2 Barre de statistiques
-   - 4.3 Le tableau de comparaison (DataGrid)
-   - 4.4 Code couleur des lignes
-   - 4.5 Colonnes disponibles
+   - 4.3 Barre de filtres
+   - 4.4 Le tableau de comparaison (DataGrid)
+   - 4.5 Code couleur des lignes
+   - 4.6 Colonnes disponibles
 5. [Les quatre cas de synchronisation](#5-les-quatre-cas-de-synchronisation)
 6. [Workflow pas à pas](#6-workflow-pas-à-pas)
    - 6.1 Analyser le tableau
@@ -94,16 +99,19 @@ Au clic, le script :
 ## 4. Lecture de l'interface principale
 
 ### [CAPTURE 1]
-> **Ce que montre cette capture** : la fenêtre principale après analyse, avec le tableau de comparaison. La barre de titre indique `Reservations RES vs STR [v3.0.0]`. La barre de statistiques montre VALIDE : 533, REFUSÉ : 226, Absentes : 2 115, Invalidées : 49, OK : 529, STR seul : 5, Total lien : 2 768, Total hôte : 584. Le tableau affiche des lignes orangées (INVALIDE) et vertes (ABSENT VALIDE). La barre de sélection indique `53 sélectionnée(s)`.
+> **Ce que montre cette capture** : la fenêtre principale après analyse. La barre de statistiques montre VALIDE : 533, REFUSÉ : 226, Absentes : 2 115, Invalidées : 49, OK : 529, STR seul : 5, Total lien : 2 768, Total hôte : 584, puis `Affichées : x / y` et `53 sélectionnée(s)`. En dessous, la barre de filtres. Le tableau affiche des lignes orangées (INVALIDE) et vertes (ABSENT VALIDE). Le pied de page indique `v3.1.0 | STR BIM Tools by Tony Varin`.
 
 ---
 
 ### 4.1 Barre de titre
 
 ```
-Reservations RES vs STR [v3.0.0]
+Reservations RES vs STR                              (titre de la fenêtre)
 Comparaison Réservations — STR (584 él.) vs SPV/FGH_RES_SPV_... (2768 él.)
 ```
+
+La version de l'outil est affichée en bas à gauche, dans le pied de page :
+`v3.1.0 | STR BIM Tools by Tony Varin`.
 
 - **STR (584 él.)** : nombre d'éléments `FGH_RES*` trouvés dans la maquette hôte (hors éléments marqués Supprimé).
 - **SPV/... (2768 él.)** : nombre d'éléments `FGH_RES*` trouvés dans le lien.
@@ -121,22 +129,57 @@ Comparaison Réservations — STR (584 él.) vs SPV/FGH_RES_SPV_... (2768 él.)
 | **✔ OK : 529** | Présentes dans les deux modèles, identiques |
 | **STR seul : 5** | Présentes dans la STR mais introuvables dans le lien |
 | **Total lien / Total hôte** | Totaux bruts |
+| **Affichées : 12 / 5014** | Lignes visibles après filtrage / total analysé |
+| **12 sélectionnée(s)** | Lignes cochées, donc traitées par Synchroniser |
 
 > **Lecture rapide** : à l'ouverture, les chiffres clés à surveiller sont **Absentes** (Cas A — à copier), **Invalidées** (Cas D — à purger) et **⚠ Différentes** (Cas B — à mettre à jour).
 
+> **Attention au compteur de sélection** : si des lignes cochées sont masquées par un filtre, le compteur le signale — `48 sélectionnée(s) — dont 36 hors filtre`. Ces 36 lignes **seront quand même synchronisées** : Synchroniser traite toutes les lignes cochées, pas seulement celles affichées. Décocher ce qui ne doit pas partir avant de lancer.
+
 ---
 
-### 4.3 Le tableau de comparaison (DataGrid)
+### 4.3 Barre de filtres
+
+Depuis la v3.1.0, une barre de filtres occupe le haut de la fenêtre, juste sous les statistiques. Elle sert à isoler un sous-ensemble de réservations puis à le cocher d'un seul clic.
+
+```
+Filtres :  [Statut VAL ▼]  [Date VAL ▼]  [Statut synchro ▼]  [Recherche____]
+           ☐ Actionnables seulement   [Réinitialiser] | [Cocher affichés] [Décocher affichés]
+```
+
+| Contrôle | Rôle |
+|----------|------|
+| **Statut VAL** | `VALIDE`, `REFUSE`, `(vide)` ou tout autre statut présent dans le lien. L'effectif est indiqué entre parenthèses. |
+| **Date VAL** | Dates de validation présentes dans le lien, **de la plus récente à la plus ancienne**. La liste est en cascade : elle ne montre que les dates du statut sélectionné, avec leur effectif. |
+| **Statut synchro** | `INVALIDE`, `ABSENT`, `DIFFERENT`, `STR_SEUL`, `OK`. |
+| **Recherche** | Recherche libre sur le n° de réservation, la famille, le niveau, le demandeur, le responsable et le commentaire de validation. |
+| **Actionnables seulement** | Masque les lignes qui ne peuvent pas être synchronisées (`OK`, `STR_SEUL`). |
+| **Réinitialiser** | Remet les quatre filtres à zéro. |
+| **Cocher affichés** | Coche les lignes **actionnables actuellement visibles** — rien d'autre. |
+| **Décocher affichés** | Décoche les lignes actuellement visibles. |
+
+> **Cas d'usage principal** — traiter toutes les réservations validées d'une date de validation donnée :
+> 1. `Statut VAL` → `VALIDE (772)`
+> 2. `Date VAL` → `09/07/2026 (12)`
+> 3. `Décocher affichés` puis `Cocher affichés` (pour partir d'une sélection propre)
+> 4. Vérifier que le compteur indique bien `12 sélectionnée(s)` sans mention « hors filtre »
+> 5. `Synchroniser`
+
+Les filtres ne modifient **jamais** les cases à cocher : masquer une ligne ne la décoche pas. C'est pour cette raison que le compteur signale les coches hors filtre.
+
+---
+
+### 4.4 Le tableau de comparaison (DataGrid)
 
 Le tableau liste **toutes les réservations concernées par une action** (ABSENT, DIFFERENT, INVALIDE, STR_SEUL). Les réservations déjà OK n'apparaissent pas par défaut.
 
 Chaque ligne représente **une réservation identifiée par son numéro** `PVA_RES_DEM_NumReservation`.
 
-La **case à cocher** en première colonne permet de sélectionner les lignes à synchroniser. Les boutons **Tout cocher / Tout décocher** agissent sur le filtrage actif.
+La **case à cocher** en première colonne permet de sélectionner les lignes à synchroniser. Les en-têtes de colonnes sont cliquables pour trier ; les colonnes de dates sont triées chronologiquement, pas alphabétiquement.
 
 ---
 
-### 4.4 Code couleur des lignes
+### 4.5 Code couleur des lignes
 
 | Couleur | Statut | Signification |
 |---------|--------|--------------|
@@ -150,22 +193,24 @@ La **case à cocher** en première colonne permet de sélectionner les lignes à
 
 ---
 
-### 4.5 Colonnes disponibles
+### 4.6 Colonnes disponibles
+
+Dans l'ordre d'affichage : le groupe validation (VAL, issu du lien SPV) d'abord, puis le groupe comparaison (STR).
 
 | Colonne | Source | Description |
 |---------|--------|-------------|
 | ☑ | — | Case de sélection |
-| **Statut VAL** | Lien SPV | `VALIDE` / `REFUSE` / vide |
+| **Statut VAL** | `PVA_RES_VAL_Statut` | `VALIDE` / `REFUSE` / vide |
+| **Date VAL** | `PVA_RES_VAL_Date` | Date de validation — tri chronologique |
+| **Commentaire VAL** | `PVA_RES_VAL_Commentaire` | Commentaire de validation |
 | **Statut Synchro** | Calculé | `ABSENT` / `DIFFERENT` / `INVALIDE` / `STR_SEUL` / `OK` |
 | **N° Réservation** | `PVA_RES_DEM_NumReservation` | Identifiant unique (ex. `15-707`) |
 | **Famille** | Nom de famille Revit | `FGH_RES_V_RECT`, `FGH_RES_H_ROND`… |
 | **Niveau** | `WSP_NiveauAssocie` | Niveau Revit associé |
 | **Demandeur** | `PVA_RES_DEM_Demandeur` | Corps d'état demandeur |
-| **Date dem.** | `PVA_RES_DEM_Date` | Date de la demande |
+| **Date dem.** | `PVA_RES_DEM_Date` | Date de la demande — tri chronologique |
 | **RES Dem.** | `RES_Demandeur` | Responsable côté demandeur |
 | **Responsable** | `RES_Responsable` | Responsable STR |
-| **Date VAL** | `PVA_RES_VAL_Date` | Date de validation |
-| **Commentaire VAL** | `PVA_RES_VAL_Commentaire` | Commentaire de validation |
 | **Détail / Différences** | Calculé | Explication textuelle du statut |
 
 ---
@@ -175,35 +220,54 @@ La **case à cocher** en première colonne permet de sélectionner les lignes à
 L'outil identifie automatiquement quatre situations, chacune déclenchant une action différente :
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        COMPARAISON PAR NUMÉRO                          │
-│                                                                         │
-│  Lien SPV ────┐                                                         │
-│               ├──► Absent de la STR + Statut VALIDE  ──► CAS A (copier)│
-│               ├──► Présent dans STR, paramètres ≠     ──► CAS B (màj)  │
-│               └──► Plus dans le lien                  ──► CAS C (marq) │
-│                                                                         │
-│  STR hôte ───► Présent + Statut devenu INVALIDE/vide  ──► CAS D (marq) │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                    APPARIEMENT PAR N° DE RÉSERVATION                        │
+│                                                                              │
+│  Statut de validation = VALIDE                                               │
+│    ├─ absent de la STR                              ──► CAS A (copier)      │
+│    ├─ présent + params ≠ + DEM_Modifie = 1          ──► CAS B (remplacer)   │
+│    └─ présent + params ≠ + DEM_Supprime = 1         ──► CAS C (marquer)     │
+│                                                                              │
+│  Statut de validation ≠ VALIDE (REFUSE, vide, …)                            │
+│    └─ déjà présent dans la STR                      ──► CAS D (marquer)     │
+│                                                                              │
+│  Présent dans la STR, absent du lien                ──► STR_SEUL (aucune    │
+│                                                          action possible)    │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Cas A — Nouveaux à copier
-- **Condition** : numéro présent dans le lien SPV, absent de la maquette STR, **statut VALIDE**.
-- **Action** : `CopyElements` de la géométrie + copie explicite de tous les paramètres partagés → placement dans le sous-projet `03_STR_RESERVATIONS` → épinglage.
+- **Condition** : numéro présent dans le lien SPV, absent de la maquette STR, **statut VALIDE**, et `PVA_RES_DEM_Supprime` différent de 1 côté lien.
+- **Action** : `CopyElements` de la géométrie + copie explicite des 14 paramètres partagés → sous-projet `03_STR_RESERVATIONS` → épinglage.
+- **Écrit** : `PVA_RES_DEM_Nouveau = 1`, `PVA_RES_DEM_Modifie = 0` sur la copie.
 - **Règle clé** : une réservation ABSENT REFUSÉ n'est **pas** copiée.
 
 ### Cas B — Modifiés à mettre à jour
-- **Condition** : numéro présent dans les deux modèles, mais au moins un paramètre diffère (géométrie, niveau, demandeur…).
-- **Action** : copie du nouvel élément depuis le lien + marquage Supprimé de l'ancienne version dans la STR.
+- **Condition** : numéro présent dans les deux modèles, statut VALIDE, au moins un des huit paramètres comparés diffère, et `PVA_RES_DEM_Modifie = 1` côté lien.
+- **Action** : copie du nouvel élément depuis le lien + marquage de l'ancienne version dans la STR.
 
-### Cas C — Supprimés côté SPV
-- **Condition** : numéro présent dans la STR mais introuvable dans le lien.
-- **Action** : marquage `PVA_RES_DEM_Supprime = 1` dans la STR (l'élément n'est **pas** effacé physiquement).
+### Cas C — Annulés par le demandeur
+- **Condition** : numéro présent des deux côtés, statut VALIDE, paramètres divergents, et `PVA_RES_DEM_Supprime = 1` **côté lien**.
+- **Action** : aucune copie ; l'élément STR est marqué.
+- ⚠ Une réservation présente dans la STR mais **introuvable dans le lien** relève de `STR_SEUL`, pas du Cas C : elle n'est jamais synchronisable.
 
 ### Cas D — Validation retirée ou refusée
-- **Condition** : élément présent dans la STR avec un statut de validation qui est passé de VALIDE à REFUSE ou vide.
-- **Action** : marquage `PVA_RES_DEM_Supprime = 1` + effacement du statut de validation.
-- **Règle clé** : les éléments marqués Supprimé sont **exclus** de la collecte à la prochaine ouverture → la liste Invalidées repasse à 0 après synchro.
+- **Condition** : élément déjà présent dans la STR dont le statut de validation ne vaut plus VALIDE (REFUSE, vide, ou toute autre valeur).
+- **Action** : aucune copie ; l'élément STR est marqué.
+
+### Ce que « marquer » veut dire, exactement
+Pour les cas B (ancienne version), C et D, l'outil écrit sur l'élément de la maquette STR :
+
+| Paramètre | Valeur écrite |
+|-----------|--------------|
+| `PVA_RES_VAL_Statut` | `SUPPRIMEE` — **c'est cette valeur, et elle seule, qui exclut l'élément de l'analyse au prochain lancement** |
+| `PVA_RES_DEM_Modifie` | `0` |
+| `PVA_RES_DEM_Nouveau` | `0` |
+| `PVA_RES_DEM_Commentaire` | `Supprimé le : JJ/MM/AAAA` — ⚠ cette écriture **écrase** le commentaire du demandeur |
+
+L'élément n'est **pas** effacé : il reste dans la maquette, épinglé, visible en vue 3D et sur les plans. Il n'est simplement plus comparé, ce qui fait repasser la liste Invalidées à 0 après synchro.
+
+> Chaque cas ouvre sa propre transaction Revit (`STR - Sync Reservations Cas A`, `… Cas B`, etc.). Un Ctrl+Z annule donc **un cas à la fois**, pas la synchronisation entière.
 
 ---
 
@@ -228,17 +292,25 @@ Exemple de lecture typique :
 
 ### 6.2 Filtrer et sélectionner
 
-- Cliquer **Tout cocher** pour sélectionner toutes les lignes visibles.
-- Ou cocher manuellement les lignes à traiter.
-- La barre inférieure affiche en temps réel : `53 sélectionnée(s)`.
+À l'ouverture, l'outil pré-coche ce qu'il traiterait : les lignes `INVALIDE` (Cas D) et les lignes `ABSENT` / `DIFFERENT` dont le statut de validation est `VALIDE`. Ce n'est qu'une proposition — c'est la sélection finale qui fait foi.
 
-> **Conseil** : travailler par type de cas. Cocher uniquement les ABSENT un premier passage, vérifier, puis les INVALIDE.
+Méthode recommandée, par lot homogène :
+
+1. **Décocher affichés** sans filtre actif, pour repartir de zéro.
+2. Poser un filtre : par exemple `Statut VAL = VALIDE` + `Date VAL = 09/07/2026`, ou `Statut synchro = INVALIDE`.
+3. **Cocher affichés**.
+4. Contrôler le compteur : `12 sélectionnée(s)`. S'il indique `— dont N hors filtre`, des lignes cochées sont masquées et partiront quand même : lever le filtre pour les voir.
+5. Synchroniser, puis recommencer avec le lot suivant.
+
+> **Conseil** : travailler par type de cas. Un premier passage sur les `ABSENT`, vérifier le résultat dans Revit, puis les `INVALIDE`. Les lots par date de validation correspondent en général à une séance de coordination, ce qui rend le contrôle plus facile.
+
+> La case **Actionnables seulement** masque les lignes `OK` et `STR_SEUL`, qui ne peuvent de toute façon pas être cochées.
 
 ---
 
 ### 6.3 Lancer la synchronisation
 
-Cliquer le bouton **Synchroniser** (barre du bas, bleu).
+Cliquer le bouton **Synchroniser** (barre du bas, vert). Il est grisé et inactif tant qu'aucune ligne n'est cochée.
 
 Une **boîte de confirmation** s'affiche avec le détail des actions :
 
@@ -301,9 +373,9 @@ Après fermeture du résumé, la fenêtre se rafraîchit automatiquement.
 
 ### 7.1 Vue 3D
 
-Le bouton **Vue 3D** (vert) crée ou met à jour automatiquement une vue 3D nommée `STR_Reservations` :
+Le bouton **Vue 3D** (violet) crée ou met à jour automatiquement une vue 3D nommée `STR_Reservations` :
 
-1. Sélectionner une ou plusieurs lignes dans le tableau (éléments avec un local existant dans la STR).
+1. Cocher une ou plusieurs lignes dans le tableau. La vue se cale sur les **lignes cochées**, filtre ou pas — comme la synchro.
 2. Cliquer **Vue 3D**.
 3. La vue s'ouvre avec une **zone de coupe (section box)** ajustée autour des éléments sélectionnés, avec une marge de 0,5 m.
 4. Le gabarit de vue `3D_STR+RES` est appliqué automatiquement s'il existe dans le projet.
@@ -314,31 +386,35 @@ Le bouton **Vue 3D** (vert) crée ou met à jour automatiquement une vue 3D nomm
 
 ### 7.2 Export CSV
 
-Le bouton **Exporter CSV** (orange) génère un fichier CSV avec toutes les lignes du tableau.
+Le bouton **Exporter CSV** (orange) génère un fichier CSV avec les lignes **actuellement affichées** — le filtre en place s'applique donc aussi à l'export. Le message de fin rappelle combien de lignes ont été écrites sur le total.
 
 - Format : `StatutVAL;StatutSTR;Numero;Famille;Niveau;Demandeur;DateDem;RESDem;Responsable;DateVal;CommentaireVAL;Detail`
 - Encodage : UTF-8 avec BOM (compatible Excel)
-- L'emplacement du fichier est demandé via une boîte de dialogue standard Windows.
+- Emplacement : le **Bureau** de l'utilisateur, sous le nom `STR_Reservations_Analyse_AAAAMMJJ_HHMM.csv`. L'horodatage évite d'écraser l'export précédent.
 
-> **Usage typique** : exporter avant de synchroniser pour garder une trace de l'état avant/après. Utile pour les réunions de coordination.
+> **Usage typique** : exporter avant de synchroniser pour garder une trace de l'état avant/après. Combiné aux filtres, permet de sortir la liste des réservations validées d'une séance donnée pour la réunion de coordination.
 
 ---
 
 ## 8. Règles métier importantes
 
 ### Seules les VALIDE sont copiées
-Une réservation dont le statut de validation n'est pas exactement `VALIDE` n'est **jamais** copiée dans la STR, même si elle est cochée et classée ABSENT.
+Une réservation dont le statut de validation ne signifie pas `VALIDE` n'est **jamais** copiée dans la STR, même si elle est cochée et classée ABSENT.
 
 ```
-Statut lien  │  Action Cas A
-─────────────┼──────────────
+Statut lien   │  Action Cas A
+──────────────┼──────────────
 VALIDE        │  Copie + paramètres
 REFUSE        │  Ignorée (ligne affichée mais non copiée)
 vide          │  Ignorée
+INVALIDE      │  Ignorée
+NON VALIDE    │  Ignorée
 ```
 
+> **Corrigé en v3.1.0** : le test se faisait sur la présence de la sous-chaîne `VALID`. Or `INVALIDE` et `NON VALIDE` la contiennent aussi — ces réservations étaient donc traitées comme validées et copiées dans la STR. Le test exclut désormais explicitement les formes négatives.
+
 ### Les éléments ne sont jamais effacés
-L'outil ne supprime **jamais** physiquement d'élément Revit. Il positionne uniquement le paramètre `PVA_RES_DEM_Supprime = 1`. L'effacement réel, si nécessaire, se fait manuellement.
+L'outil ne supprime **jamais** physiquement d'élément Revit. Il écrit `SUPPRIMEE` dans `PVA_RES_VAL_Statut`, ce qui exclut l'élément des analyses suivantes sans le retirer de la maquette. L'effacement réel, si nécessaire, se fait manuellement ou via l'outil **Purge Réservations**.
 
 ### Copie géométrie + paramètres
 Depuis la v3.0.0, la copie d'un élément depuis le lien inclut :
@@ -375,7 +451,7 @@ Tous les éléments copiés sont **épinglés** (pin Revit) dans la STR. Cela em
 
 **Ce qui se passe en v3.0.0** : la copie des paramètres est effectuée automatiquement après chaque `CopyElements`. Si des doublons s'accumulent dans la maquette, c'est un symptôme d'une version antérieure à v3.0.0.
 
-**Solution** : passer en v3.0.0. Nettoyer manuellement les doublons en vue 3D (filtrer par famille, vérifier les épinglés sans numéro).
+**Solution** : passer en v3.0.0 ou ultérieure. Nettoyer manuellement les doublons en vue 3D (filtrer par famille, vérifier les épinglés sans numéro).
 
 ---
 
@@ -383,7 +459,7 @@ Tous les éléments copiés sont **épinglés** (pin Revit) dans la STR. Cela em
 
 **Cause** : une version antérieure à la correction Option A collectait les éléments marqués Supprimé dans la maquette hôte, les reclassait comme INVALIDE, et relançait la boucle.
 
-**Solution** : passer en v3.0.0. La collecte hôte exclut désormais les éléments avec `PVA_RES_DEM_Supprime = 1`.
+**Solution** : passer en v3.0.0 ou ultérieure. La collecte hôte exclut désormais les éléments dont `PVA_RES_VAL_Statut` vaut `SUPPRIMEE`.
 
 ---
 
@@ -401,11 +477,21 @@ Les éléments déjà copiés dans le mauvais sous-projet doivent être déplac�
 
 ### ❌ Les éléments copiés ont les mauvais paramètres (valeurs mélangées)
 
-**Cause** : lors de la copie, Revit peut réordonnancer les `ElementId` retournés par `CopyElements` si les familles source et destination ne sont pas strictement identiques (version, paramètres intégrés différents).
+**Cause** : lors de la copie, Revit peut réordonnancer les `ElementId` retournés par `CopyElements` si les familles source et destination ne sont pas strictement identiques (version, paramètres intégrés différents). L'outil appariait alors la copie n° 1 avec la source n° 1, la copie n° 2 avec la source n° 2, etc. — un décalage suffisait à écrire les paramètres d'une réservation sur une autre.
 
 **Indicateur** : dans le diagnostic, on voit `src='15-707' → dst='15-513'` (numéros non correspondants).
 
-**Solution** : vérifier que la famille chargée dans la STR est **exactement la même version** que dans le SPV. Purger la famille STR et recharger depuis la source SPV.
+**Ce qui se passe en v3.1.0** : l'appariement se fait par n° de réservation quand le paramètre a survécu à la copie, et ne retombe sur l'ordre positionnel que si aucun numéro n'est exploitable. L'ordre de retour de Revit n'a donc plus d'incidence.
+
+**Solution complémentaire** : vérifier que la famille chargée dans la STR est **exactement la même version** que dans le SPV. Purger la famille STR et recharger depuis la source SPV.
+
+---
+
+### ⚠ « Contrôle des N° de réservation » à l'ouverture
+
+**Cause** : l'outil indexe les réservations par `PVA_RES_DEM_NumReservation`. Deux éléments portant le même numéro s'écrasent mutuellement dans l'index (seul le dernier rencontré est comparé), et un élément sans numéro est purement ignoré. Ce message signale la situation avant la comparaison — il n'y a **aucun** blocage, l'analyse se poursuit.
+
+**Solution** : corriger les numéros côté SPV, ou identifier les éléments concernés via la recherche libre de la barre de filtres. Un doublon dans la maquette STR provient en général d'un ancien élément copié dont le numéro n'a pas été transféré (bug antérieur à la v3.0.0).
 
 ---
 
@@ -427,16 +513,31 @@ Ce chemin est valide pour **tout utilisateur Windows**, quel que soit son nom de
 Pour mettre à jour uniquement le script :
 
 ```
-Remplacer le fichier :
+Remplacer les fichiers :
 %APPDATA%\pyRevit-Master\extensions\STR Bim Tools.extension\
   STR Bim Tools.tab\Base.panel\FGH.pulldown\
-  Transfert_reservations.pushbutton\script.py
+  Transfert Reservations.pushbutton\script.py
+  Transfert Reservations.pushbutton\bundle.yaml
 ```
 
 Puis recharger pyRevit : **pyRevit › Reload** (ou utiliser le bouton Reload de l'onglet STR BIM Tools).
 
+> Depuis la v3.1.0, le titre du bouton, l'infobulle et le numéro de version sont déclarés dans `bundle.yaml` et non plus dans `script.py`. Les deux fichiers doivent être déployés ensemble, et `version:` du `bundle.yaml` doit rester synchronisé avec `SCRIPT_VERSION` du script.
+
 ### Version actuelle
-`v3.0.0` — corrections incluses :
+
+`v3.1.0` :
+- Barre de filtres en haut de la fenêtre : statut de validation, date de validation en cascade avec effectifs, statut de synchronisation, recherche libre, « Actionnables seulement »
+- `Cocher / Décocher affichés` remplacent `Tout cocher / Tout décocher` et n'agissent que sur les lignes visibles
+- Compteur `Affichées : x / y` et signalement des coches masquées par un filtre
+- Correction : `INVALIDE` et `NON VALIDE` ne sont plus interprétés comme validés
+- Correction : appariement source ↔ copie par n° de réservation au lieu de l'ordre de retour de `CopyElements`
+- Contrôle des N° en doublon et des éléments sans N° au lancement
+- Export CSV limité à la vue filtrée, nom de fichier horodaté
+- Filet de sécurité `TaskDialog` sur les erreurs de chargement et d'exécution
+- `bundle.yaml` : titre, infobulle et version sortis du script
+
+`v3.0.0` :
 - Workset : utilisation de `.IntegerValue` pour l'assignation au sous-projet
 - Option A : exclusion des éléments Supprimé de la collecte hôte (fin de la boucle infinie Invalidées)
 - Copie explicite des paramètres partagés après `CopyElements` (fin des doublons sans numéro)
@@ -445,4 +546,4 @@ Puis recharger pyRevit : **pyRevit › Reload** (ou utiliser le bouton Reload de
 
 ---
 
-*Document généré le 28/05/2026 — STR BIM Tools v3.0.0*
+*Document créé le 28/05/2026, mis à jour le 11/08/2026 — STR BIM Tools v3.1.0*

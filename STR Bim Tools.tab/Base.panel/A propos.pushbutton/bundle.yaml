@@ -1,0 +1,16 @@
+title:
+  fr_fr: 'À propos'
+
+tooltip:
+  fr_fr: >
+    La philosophie de STR BIM Tools en quatre principes, et le lien vers
+    www.str-bim-tools.com. La règle métier est une donnée et non du code ;
+    rien n'est écrit dans la maquette sans un geste explicite ; ce qui échoue
+    est rapporté nommément ; chaque outil dit aussi ce qu'il ne fait pas.
+    S'ouvre sans qu'une maquette soit ouverte.
+
+context: zero-doc
+
+author: Tony VARIN
+version: 1.0.0
+min_revit_ver: 2024

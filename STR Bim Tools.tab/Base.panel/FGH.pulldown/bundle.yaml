@@ -1,12 +1,20 @@
 title: FGH Tools Box
 
 tooltip: >
-  Outils de gestion des réservations dans le cadre du dossier Fairmont.
+  Outils du dossier Fairmont Grand Hotel : controle de conformite de la
+  maquette au BIM Execution Plan SPVA, et gestion des reservations.
 
 author: Tony VARIN
 
 layout:
+  - Controle BEP
+  - ----
   - Ne pas toucher
   - ----
   - Transfert Reservations
   - Purge Reservations
+  - ----
+  - Rechercher Reservation
+  - Doublons Reservations
+  - ----
+  - Percer Reservation

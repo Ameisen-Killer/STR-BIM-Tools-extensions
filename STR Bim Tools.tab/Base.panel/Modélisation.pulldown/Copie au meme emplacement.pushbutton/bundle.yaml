@@ -1,0 +1,17 @@
+title: Copie au même emplacement
+tooltip: >
+  Copie des éléments d'une maquette liée vers la maquette en cours, au même emplacement.
+  Deux modes de sélection au lancement : tracez une fenêtre pour prendre tout un ensemble,
+  ou cliquez sans glisser pour sélectionner élément par élément (Tab pour cycler,
+  Terminer pour valider). Les vues en perspective passent d'office en sélection par clics.
+  Les éléments trouvés sont listés dans une fenêtre de revue où vous cochez ce qui doit
+  être transféré. Filtres : texte libre, listes déroulantes multi-sélection par catégorie
+  et par type, éléments entièrement dans la fenêtre, repères. Sélection multiple au clavier
+  ou à la souris, puis bascule groupée des coches.
+  Possibilité d'ajouter d'autres fenêtres ou d'autres clics avant de valider.
+  Familles in-situ copiées sans transformation (géométrie déjà en coordonnées absolues),
+  éléments standards avec la transformation du lien, repli DirectShape si la copie API
+  est refusée. Les phases de création / démolition sont reprises par nom.
+author: Tony VARIN
+version: 2.3.0
+min_revit_ver: 2024

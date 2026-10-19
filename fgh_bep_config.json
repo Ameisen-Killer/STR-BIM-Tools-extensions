@@ -1,0 +1,214 @@
+{
+  "_commentaire": "Referentiel BEP FGH (V01.4 du 30.06.2026) pour l'outil FGH - Controle BEP. Toutes les valeurs imposees par le BEP sont ici : les modifier ne demande aucune reprise de code. Voir doc/FGH_BEP_Regles_STR.md pour la liste des regles et leur article de reference.",
+
+  "bep": {
+    "_commentaire": "Reference contractuelle controlee. Le nom du fichier detenu porte l'indice 01 alors que le pied de page du document lui-meme porte 02 : les deux sont enregistres tels quels, l'arbitrage revient a la cellule BIM.",
+    "revision": "v014",
+    "date": "Juin 2026",
+    "emetteur": "SPVA",
+    "fichier": "FGH_BIM_SPV_51_CDC_000_NNA_0001_01_BIM Execution Plan V014.pdf",
+    "reference_pied_de_page": "FGH_BIM_SPV_51_CDC_000_NNA_0001_02_BIM Execution Plan_v014_Juin 2026"
+  },
+
+  "projet": {
+    "code": "FGH",
+    "discipline": "STR",
+    "emetteur": "ABI",
+    "version_revit": "2024",
+    "taille_max_mo": 350,
+    "num_mandataire_percement": "02"
+  },
+
+  "unites": {
+    "longueur": "Centimeters",
+    "surface": "SquareMeters",
+    "volume": "CubicMeters",
+    "angle": "Degrees"
+  },
+
+  "geo": {
+    "point_topo":  { "e": 2500600.0000, "n": 1118400.0000, "z": 374.2100 },
+    "point_base":  { "e": 2500599.3589, "n": 1118404.4675, "z": 374.2100,
+                     "angle_nord_deg": 308.5047886 },
+    "tolerance_m": 0.001,
+    "tolerance_angle_deg": 0.0001,
+    "famille_cube": "SPV_IMP_RepereImplantationMN"
+  },
+
+  "niveau_reference": "FGH_100",
+  "tolerance_niveau_m": 0.005,
+  "niveaux": [
+    { "code": "FGH_060", "nom": "FGH S3 (Sous-sol 3)",        "alt": 362.010 },
+    { "code": "FGH_070", "nom": "FGH_S2 (Sous-sol 2)",        "alt": 364.860 },
+    { "code": "FGH_080", "nom": "FGH_S1 (Sous-sol 1)",        "alt": 367.700 },
+    { "code": "FGH_090", "nom": "FGH_GF_INF (RDC inferieur)", "alt": 370.480 },
+    { "code": "FGH_100", "nom": "FGH_GF (Rez de Chaussee)",   "alt": 374.210 },
+    { "code": "FGH_110", "nom": "FGH_N1 (Etage 1)",           "alt": 377.450 },
+    { "code": "FGH_120", "nom": "FGH_N2 (Etage 2)",           "alt": 380.850 },
+    { "code": "FGH_130", "nom": "FGH_N3 (Etage 3)",           "alt": 384.470 },
+    { "code": "FGH_140", "nom": "FGH_N4 (Etage 4)",           "alt": 387.310 },
+    { "code": "FGH_150", "nom": "FGH_N5 (Etage 5)",           "alt": 390.160 },
+    { "code": "FGH_160", "nom": "FGH_N6 (Etage 6)",           "alt": 393.010 },
+    { "code": "FGH_170", "nom": "FGH_N7 (Etage 7)",           "alt": 395.860 },
+    { "code": "FGH_180", "nom": "FGH_N8 (Etage 8)",           "alt": 398.700 },
+    { "code": "FGH_190", "nom": "FGH_N9 (Etage 9)",           "alt": 401.030 },
+    { "code": "PLT_050", "nom": "PLT_S4 (Sous-sol 4)",        "alt": 360.730 },
+    { "code": "PLT_060", "nom": "PLT_S3 (Sous-sol 3)",        "alt": 363.280 },
+    { "code": "PLT_070", "nom": "PLT_S2 (Sous-sol 2)",        "alt": 365.850 },
+    { "code": "PLT_080", "nom": "PLT_S1 (Sous-sol 1)",        "alt": 368.410 },
+    { "code": "PLT_090", "nom": "PLT_GF_INF (RDC inferieur)", "alt": 370.960 },
+    { "code": "PLT_100", "nom": "PLT_GF (RDC)",               "alt": 374.150 },
+    { "code": "PLT_110", "nom": "PLT_N1 (Etage 1)",           "alt": 377.430 },
+    { "code": "PLT_120", "nom": "PLT_N2 (Etage 2)",           "alt": 380.330 },
+    { "code": "PLT_130", "nom": "PLT_N3 (Etage 3)",           "alt": 383.430 },
+    { "code": "PLT_140", "nom": "PLT_N4 (Etage 4)",           "alt": 386.710 },
+    { "code": "PLT_150", "nom": "PLT_N5 (Etage 5)",           "alt": 390.000 },
+    { "code": "PLT_160", "nom": "PLT_N6 (Etage 6)",           "alt": 392.920 },
+    { "code": "0.00 = 374.21", "nom": "0.00 = 374.21",        "alt": 374.210 },
+    { "code": "TOITURE", "nom": "TOITURE",                    "alt": 402.010 }
+  ],
+
+  "sous_projets": {
+    "prefixes_autorises": ["00_GEO_", "00_IMP_", "00_STR_", "01_LIEN_", "02_", "03_STR_"],
+    "attendus": ["02_VOLUMES_EXCLUSION", "02_GABARITS_PASSAGE", "02_ZONES_COORDINATION"],
+    "controler_attendus": false
+  },
+
+  "nommage": {
+    "_commentaire_caracteres": "Le BEP 2.10 pose le jeu de base lettres + chiffres, et n'y ajoute que le blanc souligne. caracteres_extra liste ce qui est admis EN PLUS des lettres et des chiffres, par nature d'objet ; la cle _defaut sert a celles qui ne sont pas citees. La fenetre Configuration de l'outil les modifie sans toucher a ce fichier (fgh_bep_prefs.json), le temps de negocier les ecarts avec la cellule BIM.",
+    "caracteres_autorises": "^[A-Za-z0-9_]+$",
+    "caracteres_extra": {
+      "_defaut": ["_"]
+    },
+    "prefixe_specialite": "STR_",
+    "prefixes_toleres": ["STR_", "#STR_", "00_", "01_", "02_", "03_", "PVA_", "SPVA_",
+                         "FGH_", "PLT_", "SPV_", "IFC", "COORD"],
+    "portees": {
+      "familles":       true,
+      "materiaux":      true,
+      "sous_projets":   true,
+      "types":          true,
+      "vues":           false,
+      "feuilles":       false,
+      "nomenclatures":  false,
+      "parametres":     true
+    }
+  },
+
+  "zones": ["Z01", "Z02", "Z03", "Z04", "Z05", "Z06", "Z07", "Z08", "Z09",
+            "Z13", "Z21", "Z40", "Z50", "Z60", "Z61", "Z65",
+            "Z81", "Z82", "Z83", "Z84", "Z85", "Z86", "Z87", "Z89", "Z90", "TTZ"],
+
+  "attributs": [
+    { "nom": "PVA_ALL_Zone", "alias": [],
+      "libelle": "Zone de coordination", "portee": "modele",
+      "severite": "bloquant", "valeurs": "@zones", "reference": "3.3.5" },
+
+    { "nom": "PVA_ALL_InfraSuper", "alias": [],
+      "libelle": "Infrastructure / superstructure", "portee": "modele",
+      "severite": "majeur", "valeurs": ["Infra", "Super"], "reference": "3.2.2" },
+
+    { "nom": "PVA_ALL_Etage", "alias": [],
+      "libelle": "Nom du niveau", "portee": "modele",
+      "severite": "majeur", "valeurs": null, "reference": "3.2.2" },
+
+    { "nom": "PVA_ALL_Phase", "alias": [],
+      "libelle": "Phase de l'ouvrage", "portee": "modele",
+      "severite": "majeur",
+      "valeurs": ["Nouvelle construction", "existant", "demoli", "démoli"],
+      "reference": "3.2.2" },
+
+    { "nom": "PVA_ALL_Eccc_Bât", "alias": ["PVA_ALL_Eccc_Bat", "PVA_ALL_ECCC_BAT"],
+      "libelle": "Code eCCC-Bât", "portee": "modele",
+      "severite": "majeur", "valeurs": null, "reference": "3.2.2" },
+
+    { "nom": "PVA_ALL_CFC", "alias": [],
+      "libelle": "Code CFC", "portee": "modele",
+      "severite": "majeur", "valeurs": null, "reference": "3.2.2" },
+
+    { "nom": "PVA_ALL_Nom_type", "alias": [],
+      "libelle": "Nom du type", "portee": "modele",
+      "severite": "mineur", "valeurs": null, "reference": "3.2.2" },
+
+    { "nom": "PVA_ALL_Resistance_feu", "alias": ["PVA_ALL_Resistance_Feu"],
+      "libelle": "Résistance au feu", "portee": "porteurs",
+      "severite": "majeur", "valeurs": null, "reference": "3.4.8.3" }
+  ],
+
+  "categories_modele": [
+    "OST_Walls", "OST_Floors", "OST_StructuralColumns", "OST_StructuralFraming",
+    "OST_StructuralFoundation", "OST_Stairs", "OST_Ramps", "OST_Roofs",
+    "OST_GenericModel", "OST_StructConnections", "OST_Ceilings", "OST_Columns"
+  ],
+
+  "categories_porteuses": [
+    "OST_Walls", "OST_Floors", "OST_StructuralColumns", "OST_StructuralFraming",
+    "OST_StructuralFoundation"
+  ],
+
+  "categories_interdites": {
+    "OST_GenericModel": {
+      "libelle": "Modèles génériques",
+      "message": "Modèle générique : classification IFC obligatoire (art. 3.4.8.1)",
+      "exclusions_famille": ["FGH_RES", "PVA_RES", "SPV_IMP", "SPV_", "STR_RES", "RES_"]
+    }
+  },
+
+  "param_loadbearing": "LoadBearing",
+
+  "reservations": {
+    "_commentaire": "Population identique a celle des outils Sync / Doublons Reservations : occurrences dont la famille commence par FGH_RES, hors elements marques SUPPRIMEE. Le BEP nomme le parametre de numero PVA_RES_DEM_NumPercement, la maquette utilise PVA_RES_DEM_NumReservation : les deux sont acceptes.",
+    "prefixe_famille": "FGH_RES",
+    "param_numero": "PVA_RES_DEM_NumReservation",
+    "alias_numero": ["PVA_RES_DEM_NumPercement"],
+    "param_perc_str": "PVA_RES_DEM_PercSTR",
+    "param_statut_validation": "PVA_RES_VAL_Statut",
+    "statut_supprime": "SUPPRIMEE",
+    "statuts_admis": ["VALIDE", "Valide", "REFUSE", "Refuse",
+                      "EN COURS", "En cours", "SUPPRIMEE"],
+    "statuts_traites": ["VALIDE", "Valide", "REFUSE", "Refuse"],
+    "format_numero": "^[0-9]{2}-[0-9]{3,}$",
+    "num_mandataire": "02",
+    "parametres_demande": ["PVA_RES_DEM_Demandeur", "PVA_RES_DEM_Date",
+                           "PVA_RES_DEM_Statut", "PVA_RES_DEM_Commentaire",
+                           "PVA_RES_DEM_PercSTR", "PVA_RES_DEM_PercARC"],
+    "parametres_validation": ["PVA_RES_VAL_Date", "PVA_RES_VAL_Statut",
+                              "PVA_RES_VAL_Commentaire"]
+  },
+
+  "livrables": {
+    "_commentaire": "Codification des feuilles : A-B-C-D-E-F-G-H-<indice de revision>. Les parametres SPVA_GED_* sont ceux deja poses sur les cartouches et lus par l'outil Export PDF-DWG.",
+    "controler_feuilles": true,
+    "controler_textes_manuels": true,
+    "champs": [
+      { "param": "SPVA_GED_A-PROJET",           "libelle": "A - Code projet",
+        "valeurs": ["FGH"] },
+      { "param": "SPVA_GED_B-DISCIPLINE",       "libelle": "B - Discipline",
+        "valeurs": ["STR"] },
+      { "param": "SPVA_GED_C-EMMETEUR",         "libelle": "C - Emetteur",
+        "valeurs": ["ABI"] },
+      { "param": "SPVA_GED_D-PHASE SIA",        "libelle": "D - Phase SIA",
+        "valeurs": ["TT", "31", "32", "33", "41", "51", "52", "53"] },
+      { "param": "SPVA_GED_E-TYPE",             "libelle": "E - Type de document",
+        "valeurs": ["ARV", "ARM", "CDC", "COO", "CPE", "CTT", "DES", "DET",
+                    "DEV", "ECH", "ELV", "EST", "ESQ", "FAC", "FCO", "FCF",
+                    "FIA", "FIC", "FID", "FMC", "FOR", "FTE", "FZD", "IMG",
+                    "LDD", "LIS", "LTE", "MET", "MOD", "MOM", "NDC", "OFF",
+                    "PLA", "PLG", "PRE", "PRO", "RAP", "RFI", "SCH", "SOU",
+                    "TAB", "TOP", "VEA", "VEP", "ZON"] },
+      { "param": "SPVA_GED_F-CODE ETAGE",       "libelle": "F - Code etage",
+        "valeurs": ["000", "050", "060", "070", "080", "090", "100", "110",
+                    "120", "130", "140", "150", "160", "170", "180", "190"] },
+      { "param": "SPVA_GED_G-ZONE IMPRESSION",  "libelle": "G - Zone d'impression",
+        "valeurs": ["A00", "B00", "A01", "A02", "A03", "A04", "TTZ", "NNA",
+                    "@zones"] },
+      { "param": "SPVA_GED_H-NUMERO",           "libelle": "H - Numero du livrable",
+        "format": "^[0-9]{4}$" }
+    ],
+    "format_revision": "^[0-9]{2}$"
+  },
+
+  "limites": {
+    "constats_par_regle": 2000
+  }
+}

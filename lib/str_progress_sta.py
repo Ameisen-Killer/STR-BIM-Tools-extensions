@@ -64,19 +64,27 @@ class ProgressionSTA(object):
     Toutes les methodes publiques sont appelables depuis le thread Revit.
     """
 
-    def __init__(self, total, titre, version, annulable=True, topmost=True):
+    def __init__(self, total, titre, version, annulable=True, topmost=True,
+                 largeur=None, hauteur=None):
         """
         topmost : garder la fenetre au premier plan. A mettre a False quand
         l'appelant ouvre des boites de dialogue PENDANT sa boucle (confirmation
         d'ecrasement...). Une fenetre topmost appartenant a un autre thread
         passe DEVANT une MessageBox modale : l'utilisateur ne voit pas la
         question, le traitement semble fige alors qu'il attend un clic.
+
+        largeur / hauteur : taille de la fenetre en unites WPF. Laisser a None
+        pour la taille standard partagee par tous les outils ; ne les preciser
+        que si le tool affiche des libelles longs (chemins, noms de feuilles)
+        qui seraient tronques. Une valeur ici n'affecte QUE l'appelant.
         """
         self._total = max(1, int(total))
         self._titre = titre
         self._version = version
         self._annulable = annulable
         self._topmost = topmost
+        self._largeur = largeur
+        self._hauteur = hauteur
         self._faits = 0
         self._pct = None      # None = progression reelle pas encore recue
 
@@ -137,8 +145,9 @@ class ProgressionSTA(object):
     def _construire(self):
         win = Window()
         win.Title = self._titre
-        win.Width = 540
-        win.Height = 290 if self._annulable else 250
+        win.Width = self._largeur if self._largeur else 540
+        win.Height = self._hauteur if self._hauteur else (
+            290 if self._annulable else 250)
         win.ResizeMode = SW.ResizeMode.NoResize
         win.WindowStartupLocation = SW.WindowStartupLocation.CenterScreen
         win.Background = str_ui.couleur("fond")

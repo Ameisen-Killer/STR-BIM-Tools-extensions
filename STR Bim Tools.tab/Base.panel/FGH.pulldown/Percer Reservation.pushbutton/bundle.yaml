@@ -1,0 +1,17 @@
+title: "Percer\nReservation"
+tooltip: >
+  Perce les elements traverses par UNE reservation, au cas par cas. Selectionnez
+  une reservation FGH_RES* (ou lancez l'outil puis cliquez dessus) : la fenetre
+  liste tous les elements reellement traverses (murs, sols, fondations, ossatures,
+  poteaux, toitures, plafonds) avec le volume perce et la phase de chacun.
+  Le percement est realise par une famille de coupe generee a la volee, calee sur
+  la geometrie exacte de la reservation ; l'occurrence de coupe est epinglee et
+  placee dans le sous-projet 03_STR_RESERVATIONS.
+  Pour chaque element existant conserve, un bouchon reconstruit le volume retire,
+  cree dans la phase de l'hote et demoli dans la phase de la reservation : le trou
+  n'apparait qu'a partir de la nouvelle construction.
+  L'operation est integralement reversible par le bouton Retirer le percement, et
+  relancable : Appliquer reconstruit toujours a partir de la geometrie actuelle.
+author: Tony VARIN
+version: 1.0.0
+min_revit_ver: 2024

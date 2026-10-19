@@ -18,3 +18,6 @@ can241_phases.json
 ~$*
 Thumbs.db
 desktop.ini
+
+# Reglages de Controle BEP (FGH) saisis sur chaque poste
+fgh_bep_prefs.json
