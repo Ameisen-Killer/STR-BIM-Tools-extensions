@@ -37,5 +37,5 @@ tooltip: >
   fgh_bep_prefs.json. Notice complète : doc/FGH_Controle_BEP.pdf.
 
 author: Tony VARIN
-version: 1.7.0
+version: 1.7.1
 min_revit_ver: 2024

@@ -5,7 +5,7 @@
 # A utiliser quand l'operation BLOQUE le thread principal de Revit (doc.Export,
 # doc.Print...) : la fenetre vit sur son propre thread STA avec sa propre boucle
 # de messages, elle reste donc peinte et reactive pendant que Revit travaille.
-# Pour les boucles Python ordinaires, preferer can241_progress (plus simple).
+# Pour les boucles Python ordinaires, preferer str_progression (plus simple).
 #
 # Corrige trois defauts de l'implementation locale precedente :
 #   - un SEUL thread de chronometre, arme par un evenement interruptible

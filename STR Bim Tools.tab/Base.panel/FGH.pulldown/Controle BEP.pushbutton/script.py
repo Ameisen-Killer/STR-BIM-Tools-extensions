@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.7.0"
+SCRIPT_VERSION = "1.7.1"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = u"FGH - Contrôle BEP"
 # NB : toutes les valeurs imposees par le BEP (niveaux, zones, attributs,
@@ -32,9 +32,9 @@ try:
 
     import fgh_bep_regles
     import fgh_bep_dashboard
-    # Fenetre de progression generique (elle ne depend que de WPF, son prefixe
-    # can241 est historique : la dupliquer pour FGH n'apporterait rien).
-    import can241_progress
+    # Fenetre de progression generique (lib/str_progression.py, copie publique
+    # de can241_progress : l'outil marche sans le module prive CAN 241).
+    import str_progression
 
     doc   = __revit__.ActiveUIDocument.Document
     uidoc = __revit__.ActiveUIDocument
@@ -42,7 +42,7 @@ try:
     _FOOTER = u"v{0} | STR BIM Tools by Tony Varin".format(SCRIPT_VERSION)
 
     def analyse():
-        prog = can241_progress.Progression(
+        prog = str_progression.Progression(
             u"Contrôle de conformité BEP...", _FOOTER, 0)
         prog.demarrer(texte=u"Lecture de la maquette...")
         try:
