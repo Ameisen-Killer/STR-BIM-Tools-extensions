@@ -1,0 +1,13 @@
+title: Ferraillage mur
+tooltip: >
+  Cree le ferraillage courant des murs selectionnes (ou a pointer) : barres
+  verticales et horizontales sur chaque face, diametre et espacement par
+  face dans un tableau. Lit la geometrie du mur (axe, epaisseur, cotes basse
+  et haute) et detecte le mur du dessus pour faire monter les verticales en
+  attente (longueur de recouvrement reglable, mesuree depuis le pied du mur
+  du dessus). Attente en pied, enrobage et ordre des lits reglables.
+  Partition et commentaire renseignes pour la Liste de fer. Murs droits
+  uniquement, ouvertures non traitees.
+author: Tony VARIN
+version: 1.0.0
+min_revit_ver: 2024
