@@ -9,5 +9,5 @@ tooltip: >
   Partition et commentaire renseignes pour la Liste de fer. Murs droits
   uniquement, ouvertures non traitees.
 author: Tony VARIN
-version: 1.1.2
+version: 1.2.0
 min_revit_ver: 2024

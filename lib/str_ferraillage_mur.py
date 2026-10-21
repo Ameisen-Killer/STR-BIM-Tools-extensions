@@ -72,7 +72,9 @@ def calculer_jeux(mur, config):
         z_dessus   : pied du mur du dessus (cm, facultatif) : l'attente
                      traverse la dalle et se mesure depuis ce niveau
     config : dict
-        enrobage   : cm (faces et extremites)
+        enrobage   : cm (toutes faces) ou dict {"ext", "int", "autre"} :
+                     faces exterieure / interieure, autres faces (bouts,
+                     pied, tete) - enrobages Revit du mur
         h_ext      : True = horizontales au lit exterieur (contre le coffrage)
         attente    : ATTENTE_AUTO / ATTENTE_TOUJOURS / ATTENTE_JAMAIS
         rangs      : liste de dict (voir rangs_defaut)
@@ -83,7 +85,14 @@ def calculer_jeux(mur, config):
         norm       : direction de repartition (unitaire, 3D)
         repartition: longueur de repartition (cm)
     """
-    c = float(config.get("enrobage", 3.0))
+    enr = config.get("enrobage", 3.0)
+    if isinstance(enr, dict):
+        c_face = {"ext": float(enr.get("ext", 3.0)),
+                  "int": float(enr.get("int", 3.0))}
+        c = float(enr.get("autre", 3.0))        # extremites, pied, tete
+    else:
+        c = float(enr)
+        c_face = {"ext": c, "int": c}
     h_ext = config.get("h_ext", True)
     mode = config.get("attente", ATTENTE_AUTO)
     L = float(mur["longueur"])
@@ -105,12 +114,13 @@ def calculer_jeux(mur, config):
         dv = float(rv[0]["d"]) / 10.0 if rv else 0.0
         dh = float(rh[0]["d"]) / 10.0 if rh else 0.0
         # Distance face -> axe de chaque lit.
+        cf = c_face[face]
         if h_ext:
-            off_h = c + dh / 2.0
-            off_v = c + dh + dv / 2.0
+            off_h = cf + dh / 2.0
+            off_v = cf + dh + dv / 2.0
         else:
-            off_v = c + dv / 2.0
-            off_h = c + dv + dh / 2.0
+            off_v = cf + dv / 2.0
+            off_h = cf + dv + dh / 2.0
         signe = 1.0 if face == "ext" else -1.0
 
         for r in rv:

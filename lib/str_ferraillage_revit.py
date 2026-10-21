@@ -26,7 +26,7 @@ import System
 from System import Guid
 from System.Collections.Generic import List as NetList
 from Autodesk.Revit.DB import (FilteredElementCollector, BuiltInParameter,
-                               ElementId, Wall, Line, XYZ, Curve)
+                               ElementId, Wall, Line, XYZ, Curve, Transform)
 from Autodesk.Revit.DB.ExtensibleStorage import (AccessLevel, Entity, Schema,
                                                  SchemaBuilder)
 from Autodesk.Revit.DB.Structure import (Rebar, RebarBarType, RebarStyle,
@@ -212,8 +212,24 @@ def lire_mur(w):
         "u": (d.X, d.Y), "n": (n.X, n.Y),
         "longueur": courbe.Length * FT_CM, "ep": ep,
         "z_bas": bb.Min.Z * FT_CM, "z_haut": bb.Max.Z * FT_CM,
+        "enrobages": lire_enrobages(w),
     })
     return info
+
+
+def lire_enrobages(w):
+    """Enrobages Revit du mur (cm) : {"ext", "int", "autre"}, None si absent."""
+    doc = w.Document
+    res = {}
+    for cle, bip in (("ext", BuiltInParameter.CLEAR_COVER_EXTERIOR),
+                     ("int", BuiltInParameter.CLEAR_COVER_INTERIOR),
+                     ("autre", BuiltInParameter.CLEAR_COVER_OTHER)):
+        try:
+            t = doc.GetElement(w.get_Parameter(bip).AsElementId())
+            res[cle] = round(t.CoverDistance * FT_CM, 2) if t is not None else None
+        except Exception:
+            res[cle] = None
+    return res
 
 
 def lire_tous_murs(doc):
@@ -267,12 +283,44 @@ def preparer_mur(info, tous):
 # -----------------------------------------------------------------------------
 # Creation / remplacement
 # -----------------------------------------------------------------------------
-def contraindre_au_mur(rb, diag=None):
+# Ordre de traitement des poignees : extremites de barre d'abord, puis plan
+# de la 1re barre, puis le reste (bords). Chaque face n'est prise qu'une fois.
+_ORDRE_POIGNEES = ("StartOfBar", "EndOfBar", "RebarPlane")
+
+
+def _points_poignee(type_poignee, jeu):
+    """Points (cm) de la barre gouvernes par une poignee."""
+    p0, p1 = jeu["p0"], jeu["p1"]
+    v = jeu["norm"]
+    r = jeu["repartition"]
+    q0 = (p0[0] + v[0] * r, p0[1] + v[1] * r, p0[2] + v[2] * r)
+    q1 = (p1[0] + v[0] * r, p1[1] + v[1] * r, p1[2] + v[2] * r)
+    if type_poignee == "StartOfBar":
+        return [p0, q0]
+    if type_poignee == "EndOfBar":
+        return [p1, q1]
+    if type_poignee == "RebarPlane":
+        return [p0, p1]
+    return [p0, p1, q0, q1]
+
+
+def contraindre_au_mur(rb, mur, jeu, diag=None):
     """
-    Lie chaque poignee de la barre a la face du mur (ou a l'enrobage) la plus
-    proche, en gardant la position actuelle : la barre suit le mur.
-    Retourne le nombre de poignees contraintes. diag (dict) recoit les
-    compteurs et la premiere erreur rencontree.
+    Lie la barre au mur : chaque poignee est fixee a une distance de la face
+    du mur la plus proche (contrainte FixedDistanceToHostFace). Revit fait
+    alors suivre la barre quand le mur change.
+
+    Methode mesuree sur Revit 2024 par Essam Kader (RFT-Tools, licence MIT,
+    github.com/EssamKader/SimpleBeam-RFT-Tool, docs/column/verification/
+    issue-92) :
+      - candidats IsToHostFaceOrCover() mais PAS IsToCover() (une contrainte
+        a l'enrobage ne deplace pas la barre) ;
+      - cible = le mur (GetTargetElement), face plane via
+        GetTargetHostFaceAndTransform(0, Transform.Identity) ;
+      - distance SIGNEE selon la normale exterieure de la face (negative a
+        l'interieur), donnee a SetDistanceToTargetHostFace avant
+        SetPreferredConstraintForHandle.
+    Retourne le nombre de poignees liees ; diag recoit compteurs et erreur.
     """
     if diag is None:
         diag = {}
@@ -280,57 +328,66 @@ def contraindre_au_mur(rb, diag=None):
     def _erreur(etape, ex):
         diag.setdefault("erreur", u"{0} : {1}".format(etape, ex))
 
-    nb = 0
     try:
         mgr = rb.GetRebarConstraintsManager()
-    except Exception as ex:
-        _erreur(u"GetRebarConstraintsManager", ex)
-        return 0
-    try:
-        if not mgr.IsRebarConstrainedPlacementEnabled:
-            mgr.IsRebarConstrainedPlacementEnabled = True
-    except Exception as ex:
-        _erreur(u"IsRebarConstrainedPlacementEnabled", ex)
-    try:
         poignees = list(mgr.GetAllHandles())
     except Exception as ex:
         _erreur(u"GetAllHandles", ex)
         return 0
     diag["poignees"] = diag.get("poignees", 0) + len(poignees)
+
+    def _type(h):
+        try:
+            return u"{0}".format(h.GetHandleType())
+        except Exception:
+            return u""
+
+    poignees.sort(key=lambda h: _ORDRE_POIGNEES.index(_type(h))
+                  if _type(h) in _ORDRE_POIGNEES else len(_ORDRE_POIGNEES))
+    mur_id = idval(mur.Id)
+    faces_prises = []
+    nb = 0
     for poignee in poignees:
+        pts = [_xyz(p) for p in _points_poignee(_type(poignee), jeu)]
         try:
             candidats = list(mgr.GetConstraintCandidatesForHandle(poignee))
         except Exception as ex:
             _erreur(u"GetConstraintCandidatesForHandle", ex)
             continue
         diag["candidats"] = diag.get("candidats", 0) + len(candidats)
-        meilleur, dist = None, None
+        choix = []
         for cand in candidats:
             try:
-                if not cand.IsToHostFaceOrCover():
+                if not cand.IsToHostFaceOrCover() or cand.IsToCover():
                     continue
+                cible = cand.GetTargetElement()
+                if cible is None or idval(cible.Id) != mur_id:
+                    continue
+                face = cand.GetTargetHostFaceAndTransform(0, Transform.Identity)
+                normale = getattr(face, "FaceNormal", None)
+                origine = getattr(face, "Origin", None)
+                if normale is None or origine is None:
+                    continue
+                # Point de la barre le plus proche de la face (vers l'ext).
+                dist = max((p - origine).DotProduct(normale) for p in pts)
             except Exception as ex:
-                _erreur(u"IsToHostFaceOrCover", ex)
+                _erreur(u"candidat", ex)
                 continue
-            dd = None
-            for methode in ("GetDistanceToTargetCover",
-                            "GetDistanceToTargetHostFace"):
-                try:
-                    dd = abs(getattr(cand, methode)())
-                    break
-                except Exception:
-                    pass
-            if dd is None:
-                dd = 1e9                # distance inconnue : en dernier
-            if dist is None or dd < dist:
-                meilleur, dist = cand, dd
-        if meilleur is None:
-            continue
-        try:
-            mgr.SetPreferredConstraintForHandle(poignee, meilleur)
-            nb += 1
-        except Exception as ex:
-            _erreur(u"SetPreferredConstraintForHandle", ex)
+            cle = (round(normale.X, 3), round(normale.Y, 3), round(normale.Z, 3),
+                   round(origine.DotProduct(normale), 3))
+            choix.append((abs(dist), dist, cle, cand))
+        choix.sort(key=lambda t: t[0])
+        for _, dist, cle, cand in choix:
+            if cle in faces_prises:
+                continue
+            try:
+                cand.SetDistanceToTargetHostFace(dist)
+                mgr.SetPreferredConstraintForHandle(poignee, cand)
+                faces_prises.append(cle)
+                nb += 1
+            except Exception as ex:
+                _erreur(u"SetPreferredConstraintForHandle", ex)
+            break
     return nb
 
 
@@ -367,6 +424,20 @@ def creer_jeu(doc, mur, jeu, bt, partition, vue3d=None):
     return rb
 
 
+def config_effective(info, config):
+    """Avec config["enrobage_revit"] : enrobages lus sur le mur (les valeurs
+    manquantes reprennent config["enrobage"])."""
+    if not config.get("enrobage_revit"):
+        return config
+    defaut = float(config.get("enrobage", 3.0)) \
+        if not isinstance(config.get("enrobage"), dict) else 3.0
+    lu = info.get("enrobages") or {}
+    cfg = dict(config)
+    cfg["enrobage"] = dict((k, lu.get(k) if lu.get(k) is not None else defaut)
+                           for k in ("ext", "int", "autre"))
+    return cfg
+
+
 def ferrailler_mur(doc, info, config, barres, vue3d=None):
     """
     Remplace le ferraillage STR du mur (dans une transaction ouverte) :
@@ -376,6 +447,8 @@ def ferrailler_mur(doc, info, config, barres, vue3d=None):
     Retourne (ids crees, nb supprimees, echecs, nb poignees contraintes).
     """
     mur = info["elem"]
+    config_saisie = config
+    config = config_effective(info, config)
     jeux, echecs = MUR.calculer_jeux(info, config)
     anciennes = barres_str_du_mur(doc, info["id"])
     if anciennes:
@@ -391,25 +464,25 @@ def ferrailler_mur(doc, info, config, barres, vue3d=None):
             continue
         try:
             rb = creer_jeu(doc, mur, j, bt, config.get("partition", u""), vue3d)
-            crees.append(rb)
+            crees.append((rb, j))
         except Exception as ex:
             echecs.append(u"{0}/{1} : {2}".format(j["face"], j["dir"], ex))
     nb_contraintes = 0
     if crees:
         doc.Regenerate()
         diag = {}
-        for rb in crees:
-            nb_contraintes += contraindre_au_mur(rb, diag)
+        for rb, j in crees:
+            nb_contraintes += contraindre_au_mur(rb, mur, j, diag)
         if not nb_contraintes:
             echecs.append(u"Lien aux faces du mur non créé ({0} poignées, "
                           u"{1} contraintes possibles){2}".format(
                               diag.get("poignees", 0), diag.get("candidats", 0),
                               u" : " + diag["erreur"] if diag.get("erreur") else u""))
     try:
-        ecrire_donnees(mur, {"config": dict(config)})
+        ecrire_donnees(mur, {"config": dict(config_saisie)})
     except Exception as ex:
         echecs.append(u"Configuration non enregistrée dans le mur : {0}".format(ex))
-    return [rb.Id for rb in crees], len(anciennes), echecs, nb_contraintes
+    return [rb.Id for rb, _ in crees], len(anciennes), echecs, nb_contraintes
 
 
 def config_du_mur(el):

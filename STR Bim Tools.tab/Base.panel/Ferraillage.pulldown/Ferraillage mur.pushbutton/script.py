@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.1.2"
+SCRIPT_VERSION = "1.2.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = u"Ferraillage mur"
 # =============================================================================
@@ -17,6 +17,8 @@ TOOL_NAME      = u"Ferraillage mur"
 #           type de mur lu par son parametre.
 #  v1.1.2 - Configuration enregistree meme avec des accents (JSON ASCII),
 #           diagnostic du lien aux faces du mur si aucune poignee n'est liee.
+#  v1.2.0 - Lien au mur refait (contrainte a distance fixe de la face du mur,
+#           methode RFT-Tools d'Essam Kader, MIT) ; enrobages lus sur le mur.
 # =============================================================================
 
 import clr, traceback
@@ -129,7 +131,7 @@ try:
             self.Id = info["id"]
             if info.get("erreur"):
                 self.Longueur = self.Epaisseur = self.Hauteur = u""
-                self.ZBas = self.ZHaut = self.Dessus = u""
+                self.ZBas = self.ZHaut = self.Dessus = self.Enrobages = u""
             else:
                 self.Longueur = FER.fmt_nombre(info["longueur"] / 100.0)
                 self.Epaisseur = FER.fmt_nombre(info["ep"], 1)
@@ -139,6 +141,10 @@ try:
                 self.ZHaut = FER.fmt_nombre(info["z_haut"] / 100.0, 3)
                 dessus = info.get("dessus")
                 self.Dessus = u"Oui ({0})".format(dessus["id"]) if dessus else u"Non"
+                enr = info.get("enrobages") or {}
+                self.Enrobages = u" / ".join(
+                    u"-" if enr.get(k) is None else FER.fmt_nombre(enr[k], 1)
+                    for k in ("ext", "int", "autre"))
             nb_str, nb_autres = existants or (0, 0)
             self.Existants = u"{0} STR".format(nb_str) if nb_str else u""
             if nb_autres:
@@ -218,6 +224,12 @@ try:
             self.tb_enrobage = UI.zone_texte(80, u"{0}".format(
                 self._src("enrobage", 3)))
             sp.Children.Add(UI.ligne_champ(u"Enrobage (cm)", self.tb_enrobage, 170))
+            self.chk_enr_revit = UI.checkbox(
+                u"Utiliser les enrobages Revit du mur (faces ext. / int. / "
+                u"autres) ; la valeur ci-dessus sert si l'un manque",
+                self._src("enrobage_revit", True))
+            self.chk_enr_revit.Margin = Thickness(170, 0, 0, 6)
+            sp.Children.Add(self.chk_enr_revit)
             self.cb_lit = UI.combo(LITS, 0, 260)
             UI.selectionner_valeur(self.cb_lit, self._src("h_ext", True))
             sp.Children.Add(UI.ligne_champ(u"Lit extérieur", self.cb_lit, 170))
@@ -268,6 +280,7 @@ try:
                     (u"Haut. m", "Hauteur", 70), (u"Z bas m", "ZBas", 80),
                     (u"Z haut m", "ZHaut", 80),
                     (u"Mur au-dessus", "Dessus", 110),
+                    (u"Enrobages Revit ext/int/autres cm", "Enrobages", 120),
                     (u"Armatures existantes", "Existants", 120),
                     (u"Remarque", "Remarque", 0)):
                 col = DataGridTextColumn()
@@ -350,6 +363,7 @@ try:
             return {"enrobage": self._nombre(self.tb_enrobage, 3, u"enrobage"),
                     "h_ext": UI.valeur_combo(self.cb_lit, True),
                     "attente": UI.valeur_combo(self.cb_attente, MUR.ATTENTE_AUTO),
+                    "enrobage_revit": bool(self.chk_enr_revit.IsChecked),
                     "partition": self.tb_partition.Text or u"",
                     "rangs": rangs}
 
@@ -357,6 +371,7 @@ try:
             self.prefs.update({
                 "rangs": config["rangs"], "enrobage": config["enrobage"],
                 "h_ext": config["h_ext"], "attente": config["attente"],
+                "enrobage_revit": config["enrobage_revit"],
                 "partition": self.tb_partition.Text or u"",
                 "vue3d": bool(self.chk_3d.IsChecked)})
             sauver_prefs(self.prefs)
@@ -367,7 +382,8 @@ try:
             for info in self.infos:
                 if info.get("erreur"):
                     continue
-                jeux, err = MUR.calculer_jeux(info, config)
+                jeux, err = MUR.calculer_jeux(
+                    info, FR.config_effective(info, config))
                 erreurs.extend(u"Mur {0} : {1}".format(info["id"], m) for m in err)
                 for j in jeux:
                     n = MUR.nombre_barres(j["repartition"], j["e"])
