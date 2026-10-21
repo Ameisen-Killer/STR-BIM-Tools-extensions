@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.0.0"
+SCRIPT_VERSION = "1.1.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = u"Ferraillage mur"
 # =============================================================================
@@ -10,6 +10,9 @@ TOOL_NAME      = u"Ferraillage mur"
 #           horizontales par face, enrobage, ordre des lits, attentes en tete
 #           (mur du dessus detecte) et en pied. Jeux Revit a espacement
 #           maximal, partition et commentaire renseignes pour la liste de fer.
+#  v1.1.0 - Armatures liees au mur : poignees contraintes aux faces du mur,
+#           configuration enregistree dans le mur, relancer l'outil remplace
+#           le ferraillage STR (bouton "Mettre a jour murs" pour plusieurs).
 # =============================================================================
 
 import clr, traceback
@@ -47,26 +50,21 @@ try:
                                          DataGridHeadersVisibility, CheckBox)
     from System.Windows.Data import Binding
 
-    from Autodesk.Revit.DB import (FilteredElementCollector, BuiltInCategory,
-                                   BuiltInParameter, ElementId, Wall, Line,
-                                   XYZ, Curve, View3D, Transaction,
+    from Autodesk.Revit.DB import (ElementId, Wall, View3D, Transaction,
                                    TransactionStatus)
-    from Autodesk.Revit.DB.Structure import (Rebar, RebarBarType, RebarStyle,
-                                             RebarHookOrientation)
     from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
     from Autodesk.Revit.Exceptions import OperationCanceledException
 
     import str_ui as UI
     import str_ferraillage as FER
     import str_ferraillage_mur as MUR
+    import str_ferraillage_revit as FR
 
     uidoc = __revit__.ActiveUIDocument
     doc   = uidoc.Document
     app   = __revit__.Application
 
     _FOOTER = u"v{0} | STR BIM Tools by Tony VARIN".format(SCRIPT_VERSION)
-    FT_CM = 30.48
-    FT_MM = 304.8
 
     LITS = [(u"Horizontales contre le coffrage", True),
             (u"Verticales contre le coffrage", False)]
@@ -96,118 +94,6 @@ try:
             pass
 
     # =========================================================================
-    # Types de barres
-    # =========================================================================
-    def diametre_type_mm(bt):
-        for attr in ("BarNominalDiameter", "BarDiameter", "BarModelDiameter"):
-            try:
-                v = getattr(bt, attr)
-                if v:
-                    return round(v * FT_MM, 1)
-            except Exception:
-                pass
-        return 0.0
-
-    def types_barres():
-        """{diametre mm (int): RebarBarType}, un type par diametre."""
-        res = {}
-        for bt in FilteredElementCollector(doc).OfClass(RebarBarType):
-            d = int(round(diametre_type_mm(bt)))
-            if d > 0 and d not in res:
-                res[d] = bt
-        return res
-
-    # =========================================================================
-    # Lecture des murs
-    # =========================================================================
-    def _idval(eid):
-        try:
-            return eid.Value
-        except Exception:
-            return eid.IntegerValue
-
-    def _xy(p):
-        return (p.X * FT_CM, p.Y * FT_CM)
-
-    def lire_mur(w):
-        """Mur Revit -> dict geometrique (cm) pour str_ferraillage_mur."""
-        info = {"id": _idval(w.Id), "elem": w, "erreur": u""}
-        try:
-            info["type"] = w.WallType.Name
-        except Exception:
-            info["type"] = u"?"
-        courbe = w.Location.Curve if hasattr(w.Location, "Curve") else None
-        if courbe is None or not isinstance(courbe, Line):
-            info["erreur"] = u"Mur courbe ou sans axe : non géré"
-            return info
-        p0, p1 = courbe.GetEndPoint(0), courbe.GetEndPoint(1)
-        d = (p1 - p0).Normalize()
-        n = w.Orientation
-        ep = w.Width * FT_CM
-        # Ligne de justification -> axe central.
-        decal = 0.0
-        try:
-            cle = w.get_Parameter(BuiltInParameter.WALL_KEY_REF_PARAM).AsInteger()
-            if cle in (2, 4):
-                decal = -ep / 2.0
-            elif cle in (3, 5):
-                decal = ep / 2.0
-        except Exception:
-            pass
-        o = _xy(p0)
-        bb = w.get_BoundingBox(None)
-        if bb is None:
-            info["erreur"] = u"Géométrie introuvable"
-            return info
-        info.update({
-            "o": (o[0] + n.X * decal, o[1] + n.Y * decal),
-            "u": (d.X, d.Y), "n": (n.X, n.Y),
-            "longueur": courbe.Length * FT_CM, "ep": ep,
-            "z_bas": bb.Min.Z * FT_CM, "z_haut": bb.Max.Z * FT_CM,
-        })
-        return info
-
-    def detecter_mur_dessus(info, tous):
-        """Un mur dont le pied est a la tete de celui-ci et qui le recouvre."""
-        if info.get("erreur"):
-            return None
-        ux, uy = info["u"]
-        nx, ny = info["n"]
-        ox, oy = info["o"]
-        for autre in tous:
-            if autre["id"] == info["id"] or autre.get("erreur"):
-                continue
-            # Pied du mur du dessus : a la tete de celui-ci, ou au-dessus
-            # d'une dalle intermediaire (jusqu'a 60 cm).
-            ecart = autre["z_bas"] - info["z_haut"]
-            if ecart < -5.0 or ecart > 60.0:
-                continue
-            ax, ay = autre["o"]
-            bx = ax + autre["u"][0] * autre["longueur"]
-            by = ay + autre["u"][1] * autre["longueur"]
-            # Recouvrement le long de l'axe et ecart transversal.
-            s0 = (ax - ox) * ux + (ay - oy) * uy
-            s1 = (bx - ox) * ux + (by - oy) * uy
-            t0 = (ax - ox) * nx + (ay - oy) * ny
-            t1 = (bx - ox) * nx + (by - oy) * ny
-            recouvre = min(max(s0, s1), info["longueur"]) - max(min(s0, s1), 0.0)
-            if recouvre > 10.0 and max(abs(t0), abs(t1)) < \
-                    (info["ep"] + autre["ep"]) / 2.0:
-                return autre
-        return None
-
-    def armatures_existantes():
-        """{id mur: nombre d'armatures hebergees}."""
-        res = {}
-        for rb in FilteredElementCollector(doc).OfClass(Rebar):
-            try:
-                h = _idval(rb.GetHostId())
-                res[h] = res.get(h, 0) + 1
-            except Exception:
-                pass
-        return res
-
-    # =========================================================================
     # Selection
     # =========================================================================
     class FiltreMurs(ISelectionFilter):
@@ -231,43 +117,10 @@ try:
         return [doc.GetElement(r.ElementId) for r in refs]
 
     # =========================================================================
-    # Creation des armatures
-    # =========================================================================
-    def _xyz(p):
-        return XYZ(p[0] / FT_CM, p[1] / FT_CM, p[2] / FT_CM)
-
-    def creer_jeu(mur, jeu, bt, partition, vue3d):
-        ligne = Line.CreateBound(_xyz(jeu["p0"]), _xyz(jeu["p1"]))
-        courbes = NetList[Curve]()
-        courbes.Add(ligne)
-        norm = XYZ(jeu["norm"][0], jeu["norm"][1], jeu["norm"][2])
-        rb = Rebar.CreateFromCurves(doc, RebarStyle.Standard, bt, None, None,
-                                    mur, norm, courbes,
-                                    RebarHookOrientation.Left,
-                                    RebarHookOrientation.Left, True, True)
-        rb.GetShapeDrivenAccessor().SetLayoutAsMaximumSpacing(
-            jeu["e"] / FT_CM, jeu["repartition"] / FT_CM, True, True, True)
-        for bip, val in ((BuiltInParameter.NUMBER_PARTITION_PARAM, partition),
-                         (BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS,
-                          jeu["commentaire"])):
-            try:
-                p = rb.get_Parameter(bip)
-                if p is not None and not p.IsReadOnly and val:
-                    p.Set(val)
-            except Exception:
-                pass
-        if vue3d is not None:
-            try:
-                rb.SetUnobscuredInView(vue3d, True)
-            except Exception:
-                pass
-        return rb
-
-    # =========================================================================
     # Lignes du tableau des murs
     # =========================================================================
     class LigneMur(object):
-        def __init__(self, info, nb_existants):
+        def __init__(self, info, existants):
             self.info = info
             self.Mur = info.get("type", u"")
             self.Id = info["id"]
@@ -283,7 +136,11 @@ try:
                 self.ZHaut = FER.fmt_nombre(info["z_haut"] / 100.0, 3)
                 dessus = info.get("dessus")
                 self.Dessus = u"Oui ({0})".format(dessus["id"]) if dessus else u"Non"
-            self.Existants = nb_existants or u""
+            nb_str, nb_autres = existants or (0, 0)
+            self.Existants = u"{0} STR".format(nb_str) if nb_str else u""
+            if nb_autres:
+                self.Existants += (u" + " if nb_str else u"") + \
+                    u"{0} autre(s)".format(nb_autres)
             self.Remarque = info.get("erreur", u"")
 
     # =========================================================================
@@ -304,12 +161,25 @@ try:
             self.existants = existants
             self.barres = barres            # {d mm: RebarBarType}
             self.prefs = charger_prefs()
-            self.rangs = self.prefs.get("rangs") or MUR.rangs_defaut(
+            # Configuration deja enregistree dans un des murs : elle prime.
+            self.config_mur = None
+            for info in infos:
+                cfg = FR.config_du_mur(info["elem"])
+                if cfg:
+                    self.config_mur = cfg
+                    break
+            source = self.config_mur or self.prefs
+            self.rangs = source.get("rangs") or MUR.rangs_defaut(
                 12 if 12 in barres else (sorted(barres)[0] if barres else 12))
             self.controles = []
             self.cree = 0
             self._construire()
             self._apercu()
+
+        def _src(self, cle, defaut):
+            if self.config_mur and cle in self.config_mur:
+                return self.config_mur[cle]
+            return self.prefs.get(cle, defaut)
 
         # --- Construction -----------------------------------------------------
         def _construire(self):
@@ -343,16 +213,16 @@ try:
             sp = StackPanel()
             gb2.Child = sp
             self.tb_enrobage = UI.zone_texte(80, u"{0}".format(
-                self.prefs.get("enrobage", 3)))
+                self._src("enrobage", 3)))
             sp.Children.Add(UI.ligne_champ(u"Enrobage (cm)", self.tb_enrobage, 170))
             self.cb_lit = UI.combo(LITS, 0, 260)
-            UI.selectionner_valeur(self.cb_lit, self.prefs.get("h_ext", True))
+            UI.selectionner_valeur(self.cb_lit, self._src("h_ext", True))
             sp.Children.Add(UI.ligne_champ(u"Lit extérieur", self.cb_lit, 170))
             self.cb_attente = UI.combo(ATTENTES, 0, 260)
             UI.selectionner_valeur(self.cb_attente,
-                                   self.prefs.get("attente", MUR.ATTENTE_AUTO))
+                                   self._src("attente", MUR.ATTENTE_AUTO))
             sp.Children.Add(UI.ligne_champ(u"Attentes en tête", self.cb_attente, 170))
-            self.tb_partition = UI.zone_texte(260, self.prefs.get(
+            self.tb_partition = UI.zone_texte(260, self._src(
                 "partition", u"Elévations"))
             sp.Children.Add(UI.ligne_champ(u"Partition (liste de fer)",
                                            self.tb_partition, 170))
@@ -477,6 +347,7 @@ try:
             return {"enrobage": self._nombre(self.tb_enrobage, 3, u"enrobage"),
                     "h_ext": UI.valeur_combo(self.cb_lit, True),
                     "attente": UI.valeur_combo(self.cb_attente, MUR.ATTENTE_AUTO),
+                    "partition": self.tb_partition.Text or u"",
                     "rangs": rangs}
 
         def _enregistrer(self, config):
@@ -493,9 +364,6 @@ try:
             for info in self.infos:
                 if info.get("erreur"):
                     continue
-                info["mur_dessus"] = info.get("dessus") is not None
-                if info["mur_dessus"]:
-                    info["z_dessus"] = info["dessus"]["z_bas"]
                 jeux, err = MUR.calculer_jeux(info, config)
                 erreurs.extend(u"Mur {0} : {1}".format(info["id"], m) for m in err)
                 for j in jeux:
@@ -542,10 +410,12 @@ try:
                 MessageBox.Show(u"Aucune barre à créer.", TOOL_NAME,
                                 MessageBoxButton.OK, MessageBoxImage.Warning)
                 return
-            deja = [i for i, _ in res if self.existants.get(i["id"])]
+            deja = [i for i, _ in res
+                    if (self.existants.get(i["id"]) or (0, 0))[1]]
             if deja:
                 r = MessageBox.Show(
-                    u"{0} mur(s) ont déjà des armatures. Ajouter quand même ?"
+                    u"{0} mur(s) ont déjà des armatures non créées par cet "
+                    u"outil (elles sont conservées). Continuer ?"
                     .format(len(deja)), TOOL_NAME, MessageBoxButton.YesNo,
                     MessageBoxImage.Question)
                 if r != MessageBoxResult.Yes:
@@ -559,21 +429,18 @@ try:
                 return
             vue3d = doc.ActiveView if (self.chk_3d.IsChecked and
                                        isinstance(doc.ActiveView, View3D)) else None
-            partition = self.tb_partition.Text or u""
             t = Transaction(doc, u"STR - Ferraillage mur")
-            echecs = []
-            crees = []
+            echecs, crees, remplacees, liees = [], [], 0, 0
             try:
                 t.Start()
-                for info, jeux in res:
-                    for j in jeux:
-                        try:
-                            rb = creer_jeu(info["elem"], j, self.barres[j["d"]],
-                                           partition, vue3d)
-                            crees.append(rb.Id)
-                        except Exception as ex:
-                            echecs.append(u"Mur {0} {1}/{2} : {3}".format(
-                                info["id"], j["face"], j["dir"], ex))
+                for info, _ in res:
+                    ids, nb_supp, err, nb_c = FR.ferrailler_mur(
+                        doc, info, config, self.barres, vue3d)
+                    crees.extend(ids)
+                    remplacees += nb_supp
+                    liees += nb_c
+                    echecs.extend(u"Mur {0} : {1}".format(info["id"], m)
+                                  for m in err)
                 if t.GetStatus() == TransactionStatus.Started:
                     t.Commit()
             except Exception:
@@ -581,7 +448,10 @@ try:
                     t.RollBack()
                 raise
             self.cree = len(crees)
-            msg = u"{0} jeux de barres créés ({1} barres).".format(len(crees), nb)
+            msg = u"{0} jeux de barres créés ({1} barres), liés au mur " \
+                  u"({2} poignées contraintes).".format(len(crees), nb, liees)
+            if remplacees:
+                msg += u"\n{0} jeu(x) STR précédent(s) remplacé(s).".format(remplacees)
             if echecs:
                 msg += u"\n\n{0} échec(s) :\n{1}".format(
                     len(echecs), u"\n".join(echecs[:8]))
@@ -603,28 +473,20 @@ try:
     # =========================================================================
     murs = murs_selectionnes()
     if murs:
-        barres = types_barres()
+        barres = FR.types_barres(doc)
         if not barres:
             MessageBox.Show(u"Aucun type de barre d'armature dans le projet.",
                             TOOL_NAME, MessageBoxButton.OK, MessageBoxImage.Error)
         else:
+            tous = FR.lire_tous_murs(doc)
             infos = []
             for m in murs:
                 try:
-                    infos.append(lire_mur(m))
+                    infos.append(FR.preparer_mur(FR.lire_mur(m), tous))
                 except Exception as ex:
-                    infos.append({"id": _idval(m.Id), "elem": m, "type": u"?",
+                    infos.append({"id": FR.idval(m.Id), "elem": m, "type": u"?",
                                   "erreur": u"Lecture impossible : {0}".format(ex)})
-            # Murs candidats au-dessus : tous les murs du projet.
-            tous = []
-            for w in FilteredElementCollector(doc).OfClass(Wall).ToElements():
-                try:
-                    tous.append(lire_mur(w))
-                except Exception:
-                    pass                # mur-rideau, empile... : ignore
-            for info in infos:
-                info["dessus"] = detecter_mur_dessus(info, tous)
-            FenetreMur(infos, armatures_existantes(), barres).ShowDialog()
+            FenetreMur(infos, FR.armatures_par_mur(doc), barres).ShowDialog()
 
 except Exception as _ex:
     _show_fatal(u"{0} v{1} - Erreur de chargement".format(TOOL_NAME, SCRIPT_VERSION),

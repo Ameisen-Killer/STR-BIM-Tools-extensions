@@ -1,0 +1,10 @@
+title: Mettre a jour murs
+tooltip: >
+  Recalcule le ferraillage STR des murs selectionnes (ou de tous les murs
+  ferrailles du projet si rien n'est selectionne) avec la configuration
+  enregistree dans chaque mur par "Ferraillage mur" : nouvelle geometrie,
+  mur du dessus ajoute ou supprime (attentes). Les barres STR du mur sont
+  remplacees, les autres armatures ne sont pas touchees.
+author: Tony VARIN
+version: 1.0.0
+min_revit_ver: 2024

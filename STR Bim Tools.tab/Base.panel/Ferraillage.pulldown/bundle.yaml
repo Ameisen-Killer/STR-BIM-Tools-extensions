@@ -3,5 +3,6 @@ tooltip: Armatures et liste de fer (SIA 262)
 
 layout:
   - Ferraillage mur
+  - Mettre a jour murs
   - ----
   - Liste de fer
