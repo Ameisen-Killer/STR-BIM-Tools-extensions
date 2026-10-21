@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.0.0"
+SCRIPT_VERSION = "1.0.1"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = u"Liste de fer"
 # =============================================================================
@@ -10,6 +10,8 @@ TOOL_NAME      = u"Liste de fer"
 #           partition + numero d'armature, cotes exterieures, figures de
 #           faconnage, recapitulation par diametre, export Excel (A4) et PDF
 #           facultatif via Excel.
+#  v1.0.1 - Les armatures illisibles restent signalees meme si aucune
+#           position n'a pu etre lue.
 # =============================================================================
 
 import clr, traceback
@@ -648,7 +650,11 @@ try:
                 txt += u"\n{0} armature(s) illisible(s) ignorée(s) : {1}".format(
                     len(self.erreurs), u" ; ".join(self.erreurs[:3]))
             if not self.barres:
-                txt = u"Aucune armature trouvée dans ce périmètre."
+                txt = (u"Aucune armature Revit (catégorie Armature structurelle) "
+                       u"trouvée dans ce périmètre.")
+                if self.erreurs:
+                    txt += u"\n{0} armature(s) illisible(s) : {1}".format(
+                        len(self.erreurs), u" ; ".join(self.erreurs[:3]))
             self.lbl_recap.Text = txt
 
         # --- Actions ----------------------------------------------------------

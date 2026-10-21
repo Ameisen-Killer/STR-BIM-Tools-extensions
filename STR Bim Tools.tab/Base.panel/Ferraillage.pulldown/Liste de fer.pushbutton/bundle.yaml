@@ -9,5 +9,5 @@ tooltip: >
   elements hotes). Export Excel A4 au format des listes du bureau, avec PDF
   automatique si Excel est installe. Cartouche memorise par projet.
 author: Tony VARIN
-version: 1.0.0
+version: 1.0.1
 min_revit_ver: 2024
