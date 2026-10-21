@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.1.1"
+SCRIPT_VERSION = "1.1.2"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = u"Ferraillage mur"
 # =============================================================================
@@ -15,6 +15,8 @@ TOOL_NAME      = u"Ferraillage mur"
 #           le ferraillage STR (bouton "Mettre a jour murs" pour plusieurs).
 #  v1.1.1 - Erreur de creation affichee (elle etait avalee par WPF), nom du
 #           type de mur lu par son parametre.
+#  v1.1.2 - Configuration enregistree meme avec des accents (JSON ASCII),
+#           diagnostic du lien aux faces du mur si aucune poignee n'est liee.
 # =============================================================================
 
 import clr, traceback
@@ -89,9 +91,8 @@ try:
 
     def sauver_prefs(prefs):
         try:
-            txt = json.dumps(prefs, ensure_ascii=False, indent=1)
             with io.open(_PREFS, "w", encoding="utf-8") as f:
-                f.write(txt if isinstance(txt, type(u"")) else txt.decode("utf-8"))
+                f.write(FER.vers_json(prefs))
         except Exception:
             pass
 

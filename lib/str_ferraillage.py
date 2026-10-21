@@ -471,3 +471,40 @@ def mise_en_page_figure(forme, largeur=340.0, hauteur=80.0):
             ancrage = "d" if nx > 0 else "g"
         textes.append((x, y, s["txt"], ancrage))
     return {"traits": traits, "textes": textes}
+
+
+# -----------------------------------------------------------------------------
+# JSON (prefs, stockage dans les elements)
+# -----------------------------------------------------------------------------
+def vers_json(valeur):
+    """
+    JSON en ASCII pur (accents en \\uXXXX). json.dumps d'IronPython 2.7
+    echoue sur les chaines .NET accentuees ("codec can't decode byte 0xe9").
+    Types geres : dict, list/tuple, texte, nombres, bool, None.
+    """
+    if valeur is None:
+        return u"null"
+    if valeur is True:
+        return u"true"
+    if valeur is False:
+        return u"false"
+    if isinstance(valeur, dict):
+        return u"{" + u",".join(vers_json(u"{0}".format(k)) + u":" + vers_json(v)
+                                for k, v in valeur.items()) + u"}"
+    if isinstance(valeur, (list, tuple)):
+        return u"[" + u",".join(vers_json(v) for v in valeur) + u"]"
+    if isinstance(valeur, (int, float)):
+        return repr(valeur) if isinstance(valeur, float) else u"{0}".format(valeur)
+    texte = u"{0}".format(valeur)
+    sortie = []
+    for ch in texte:
+        o = ord(ch)
+        if ch == u'"':
+            sortie.append(u'\\"')
+        elif ch == u"\\":
+            sortie.append(u"\\\\")
+        elif o < 32 or o > 126:
+            sortie.append(u"\\u{0:04x}".format(o))
+        else:
+            sortie.append(ch)
+    return u'"' + u"".join(sortie) + u'"'

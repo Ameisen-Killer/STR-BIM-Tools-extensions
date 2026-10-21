@@ -32,6 +32,7 @@ from Autodesk.Revit.DB.ExtensibleStorage import (AccessLevel, Entity, Schema,
 from Autodesk.Revit.DB.Structure import (Rebar, RebarBarType, RebarStyle,
                                          RebarHookOrientation)
 
+import str_ferraillage as FER
 import str_ferraillage_mur as MUR
 
 FT_CM = 30.48
@@ -97,7 +98,7 @@ def ecrire_donnees(el, donnees):
     """A appeler dans une transaction."""
     sch = _schema()
     ent = Entity(sch)
-    ent.Set[System.String](_CHAMP, json.dumps(donnees))
+    ent.Set[System.String](_CHAMP, FER.vers_json(donnees))
     el.SetEntity(ent)
 
 
@@ -266,39 +267,70 @@ def preparer_mur(info, tous):
 # -----------------------------------------------------------------------------
 # Creation / remplacement
 # -----------------------------------------------------------------------------
-def contraindre_au_mur(rb):
+def contraindre_au_mur(rb, diag=None):
     """
     Lie chaque poignee de la barre a la face du mur (ou a l'enrobage) la plus
     proche, en gardant la position actuelle : la barre suit le mur.
-    Retourne le nombre de poignees contraintes.
+    Retourne le nombre de poignees contraintes. diag (dict) recoit les
+    compteurs et la premiere erreur rencontree.
     """
+    if diag is None:
+        diag = {}
+
+    def _erreur(etape, ex):
+        diag.setdefault("erreur", u"{0} : {1}".format(etape, ex))
+
     nb = 0
     try:
         mgr = rb.GetRebarConstraintsManager()
+    except Exception as ex:
+        _erreur(u"GetRebarConstraintsManager", ex)
+        return 0
+    try:
         if not mgr.IsRebarConstrainedPlacementEnabled:
             mgr.IsRebarConstrainedPlacementEnabled = True
-        for poignee in mgr.GetAllHandles():
-            meilleur, dist = None, None
-            for cand in mgr.GetConstraintCandidatesForHandle(poignee):
-                try:
-                    if not cand.IsToHostFaceOrCover():
-                        continue
-                    try:
-                        dd = abs(cand.GetDistanceToTargetCover())
-                    except Exception:
-                        dd = abs(cand.GetDistanceToTargetHostFace())
-                except Exception:
+    except Exception as ex:
+        _erreur(u"IsRebarConstrainedPlacementEnabled", ex)
+    try:
+        poignees = list(mgr.GetAllHandles())
+    except Exception as ex:
+        _erreur(u"GetAllHandles", ex)
+        return 0
+    diag["poignees"] = diag.get("poignees", 0) + len(poignees)
+    for poignee in poignees:
+        try:
+            candidats = list(mgr.GetConstraintCandidatesForHandle(poignee))
+        except Exception as ex:
+            _erreur(u"GetConstraintCandidatesForHandle", ex)
+            continue
+        diag["candidats"] = diag.get("candidats", 0) + len(candidats)
+        meilleur, dist = None, None
+        for cand in candidats:
+            try:
+                if not cand.IsToHostFaceOrCover():
                     continue
-                if dist is None or dd < dist:
-                    meilleur, dist = cand, dd
-            if meilleur is not None:
+            except Exception as ex:
+                _erreur(u"IsToHostFaceOrCover", ex)
+                continue
+            dd = None
+            for methode in ("GetDistanceToTargetCover",
+                            "GetDistanceToTargetHostFace"):
                 try:
-                    mgr.SetPreferredConstraintForHandle(poignee, meilleur)
-                    nb += 1
+                    dd = abs(getattr(cand, methode)())
+                    break
                 except Exception:
                     pass
-    except Exception:
-        pass
+            if dd is None:
+                dd = 1e9                # distance inconnue : en dernier
+            if dist is None or dd < dist:
+                meilleur, dist = cand, dd
+        if meilleur is None:
+            continue
+        try:
+            mgr.SetPreferredConstraintForHandle(poignee, meilleur)
+            nb += 1
+        except Exception as ex:
+            _erreur(u"SetPreferredConstraintForHandle", ex)
     return nb
 
 
@@ -365,8 +397,14 @@ def ferrailler_mur(doc, info, config, barres, vue3d=None):
     nb_contraintes = 0
     if crees:
         doc.Regenerate()
+        diag = {}
         for rb in crees:
-            nb_contraintes += contraindre_au_mur(rb)
+            nb_contraintes += contraindre_au_mur(rb, diag)
+        if not nb_contraintes:
+            echecs.append(u"Lien aux faces du mur non créé ({0} poignées, "
+                          u"{1} contraintes possibles){2}".format(
+                              diag.get("poignees", 0), diag.get("candidats", 0),
+                              u" : " + diag["erreur"] if diag.get("erreur") else u""))
     try:
         ecrire_donnees(mur, {"config": dict(config)})
     except Exception as ex:

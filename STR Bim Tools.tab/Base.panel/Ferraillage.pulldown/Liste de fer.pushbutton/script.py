@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.0.1"
+SCRIPT_VERSION = "1.0.2"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = u"Liste de fer"
 # =============================================================================
@@ -12,6 +12,7 @@ TOOL_NAME      = u"Liste de fer"
 #           facultatif via Excel.
 #  v1.0.1 - Les armatures illisibles restent signalees meme si aucune
 #           position n'a pu etre lue.
+#  v1.0.2 - Preferences enregistrees meme avec des accents (JSON ASCII).
 # =============================================================================
 
 import clr, traceback
@@ -99,9 +100,8 @@ try:
 
     def sauver_prefs(prefs):
         try:
-            txt = json.dumps(prefs, ensure_ascii=False, indent=1)
             with io.open(_PREFS, "w", encoding="utf-8") as f:
-                f.write(txt if isinstance(txt, type(u"")) else txt.decode("utf-8"))
+                f.write(FER.vers_json(prefs))
         except Exception:
             pass
 
