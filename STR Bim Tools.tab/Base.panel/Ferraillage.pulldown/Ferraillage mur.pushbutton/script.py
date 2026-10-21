@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.1.0"
+SCRIPT_VERSION = "1.1.1"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = u"Ferraillage mur"
 # =============================================================================
@@ -13,6 +13,8 @@ TOOL_NAME      = u"Ferraillage mur"
 #  v1.1.0 - Armatures liees au mur : poignees contraintes aux faces du mur,
 #           configuration enregistree dans le mur, relancer l'outil remplace
 #           le ferraillage STR (bouton "Mettre a jour murs" pour plusieurs).
+#  v1.1.1 - Erreur de creation affichee (elle etait avalee par WPF), nom du
+#           type de mur lu par son parametre.
 # =============================================================================
 
 import clr, traceback
@@ -398,6 +400,16 @@ try:
 
         # --- Creation ---------------------------------------------------------
         def _on_creer(self, sender, e):
+            # Une exception dans un evenement WPF est avalee sans message :
+            # on l'affiche pour pouvoir la corriger.
+            try:
+                self._creer()
+            except Exception as ex:
+                MessageBox.Show(u"Création impossible :\n{0}\n\n{1}".format(
+                    ex, traceback.format_exc()), TOOL_NAME,
+                    MessageBoxButton.OK, MessageBoxImage.Error)
+
+        def _creer(self):
             try:
                 config = self._config()
             except ValueError as ex:

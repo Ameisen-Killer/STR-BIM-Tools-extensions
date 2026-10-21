@@ -164,13 +164,25 @@ def types_barres(doc):
 # -----------------------------------------------------------------------------
 # Lecture des murs
 # -----------------------------------------------------------------------------
+def nom_type(el):
+    """Nom du type (Element.Name n'est pas lisible tel quel en IronPython)."""
+    try:
+        t = el.Document.GetElement(el.GetTypeId())
+        p = t.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)
+        if p is not None and p.AsString():
+            return p.AsString()
+        return t.get_Parameter(BuiltInParameter.ALL_MODEL_TYPE_NAME).AsString() or u"?"
+    except Exception:
+        return u"?"
+
+
+# -----------------------------------------------------------------------------
+# Murs
+# -----------------------------------------------------------------------------
 def lire_mur(w):
     """Mur Revit -> dict geometrique (cm) pour str_ferraillage_mur."""
     info = {"id": idval(w.Id), "elem": w, "erreur": u""}
-    try:
-        info["type"] = w.WallType.Name
-    except Exception:
-        info["type"] = u"?"
+    info["type"] = nom_type(w)
     courbe = w.Location.Curve if hasattr(w.Location, "Curve") else None
     if courbe is None or not isinstance(courbe, Line):
         info["erreur"] = u"Mur courbe ou sans axe : non géré"
@@ -315,8 +327,11 @@ def creer_jeu(doc, mur, jeu, bt, partition, vue3d=None):
             rb.SetUnobscuredInView(vue3d, True)
         except Exception:
             pass
-    ecrire_donnees(rb, {"mur": idval(mur.Id), "face": jeu["face"],
-                        "dir": jeu["dir"]})
+    try:
+        ecrire_donnees(rb, {"mur": idval(mur.Id), "face": jeu["face"],
+                            "dir": jeu["dir"]})
+    except Exception:
+        pass                    # barre creee quand meme, sans marque
     return rb
 
 
@@ -352,8 +367,10 @@ def ferrailler_mur(doc, info, config, barres, vue3d=None):
         doc.Regenerate()
         for rb in crees:
             nb_contraintes += contraindre_au_mur(rb)
-    sauve = dict((k, v) for k, v in config.items())
-    ecrire_donnees(mur, {"config": sauve})
+    try:
+        ecrire_donnees(mur, {"config": dict(config)})
+    except Exception as ex:
+        echecs.append(u"Configuration non enregistrée dans le mur : {0}".format(ex))
     return [rb.Id for rb in crees], len(anciennes), echecs, nb_contraintes
 
 
