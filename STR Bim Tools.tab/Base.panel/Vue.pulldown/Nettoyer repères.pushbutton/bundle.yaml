@@ -1,0 +1,17 @@
+title: Nettoyer repères
+tooltip: >
+  Dans les vues posees sur les feuilles choisies (plans, coupes, elevations,
+  details), ne laisse visibles que les reperes de coupe, d'elevation et de
+  detail dont la vue cible est sur la meme feuille. Les autres sont masques
+  dans la vue (Masquer dans la vue > Elements), sans filtre de vue.
+  La feuille active, ou celle de la vue active, est precochee ; on peut en
+  cocher plusieurs ou toutes.
+  Une vue cible dont seule une vue dependante est sur la feuille compte comme
+  posee sur la feuille. Une option choisit le sort des reperes dont la vue
+  n'est sur aucune feuille (masques par defaut).
+  A relancer apres avoir deplace des vues : les reperes redevenus utiles sont
+  reaffiches. Le mode "Reafficher" rend visibles tous les reperes masques
+  dans les vues des feuilles choisies. Annulable par Ctrl+Z.
+author: Tony VARIN
+version: 1.0.0
+min_revit_ver: 2024
