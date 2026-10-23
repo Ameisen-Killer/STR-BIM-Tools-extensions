@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.0.0"
+SCRIPT_VERSION = "1.0.1"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Nettoyer reperes"
 # =============================================================================
@@ -23,7 +23,11 @@ TOOL_NAME      = "Nettoyer reperes"
 #        - repere d'elevation (ElevationMarker) : garde si une au moins de ses
 #          fleches pointe vers une vue de la feuille
 #   3. Regle pour un repere qui cible la vue S, dans une vue de la feuille F :
-#        - S (ou une de ses vues dependantes) est sur F    -> affiche
+#        - S est sur F                                      -> affiche
+#        - S n'est pas sur F mais une de ses dependantes y est :
+#            . si la dependante a son propre repere (coupes) -> masque, c'est
+#              le repere de la dependante qui reste visible
+#            . sinon                                         -> affiche
 #        - S n'est sur aucune feuille                       -> option
 #        - S est sur une autre feuille                      -> masque
 #   4. Mode "Reafficher" : reaffiche tous les reperes masques dans les vues
@@ -124,6 +128,16 @@ try:
         except Exception:
             pass
 
+    def nom_viewer(viewer):
+        """Nom de la vue portee par un repere (OST_Viewers)."""
+        p = viewer.get_Parameter(BuiltInParameter.VIEW_NAME)
+        if p is not None and p.HasValue and p.AsString():
+            return p.AsString()
+        try:
+            return viewer.Name
+        except Exception:
+            return None
+
     def libelle_feuille(f):
         return u"{0} - {1}".format(f.SheetNumber, f.Name)
 
@@ -167,16 +181,28 @@ try:
                 .WhereElementIsNotElementType())
             self.marqueurs = list(
                 FilteredElementCollector(doc).OfClass(ElevationMarker))
+            # Noms des vues qui ont leur propre repere : une coupe dependante
+            # en a un, distinct de celui de la vue maitre.
+            self.noms_viewers = set(
+                n for n in (nom_viewer(el) for el in self.viewers) if n)
 
         # ------------------------------------------------------------------
         def feuilles_cible(self, vue):
-            """Feuilles ou la vue apparait, elle ou une de ses dependantes."""
+            """
+            Feuilles ou la vue apparait. Les feuilles d'une vue dependante ne
+            comptent que si cette dependante n'a pas son propre repere :
+            sinon c'est ce repere-la qui doit rester visible, pas celui de
+            la vue maitre.
+            """
             cle = id_value(vue.Id)
             if cle in self._feuilles_cible_cache:
                 return self._feuilles_cible_cache[cle]
             res = set(self.feuilles_de_vue.get(cle, set()))
             try:
                 for dep in vue.GetDependentViewIds():
+                    v_dep = self.vues.get(id_value(dep))
+                    if v_dep is not None and v_dep.Name in self.noms_viewers:
+                        continue
                     res |= self.feuilles_de_vue.get(id_value(dep), set())
             except Exception:
                 pass
@@ -188,15 +214,7 @@ try:
             cle = id_value(viewer.Id)
             if cle in self._cible_cache:
                 return self._cible_cache[cle]
-            nom = None
-            p = viewer.get_Parameter(BuiltInParameter.VIEW_NAME)
-            if p is not None and p.HasValue:
-                nom = p.AsString()
-            if not nom:
-                try:
-                    nom = viewer.Name
-                except Exception:
-                    nom = None
+            nom = nom_viewer(viewer)
             candidats = list(self.vues_par_nom.get(nom, [])) if nom else []
             # Un callout appartient a sa vue parente : ce n'est pas sa cible.
             proprio = id_value(viewer.OwnerViewId)
