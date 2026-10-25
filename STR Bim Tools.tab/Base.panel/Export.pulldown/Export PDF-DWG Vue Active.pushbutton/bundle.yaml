@@ -1,16 +1,5 @@
 title: Export PDF-DWG Vue Active
-tooltip: >
-  Exporte la vue ou la feuille active en PDF et/ou DWG.
-  Nommage automatique selon la convention GED suisse pour les feuilles
-  (segments A a H + revision + description). Pour les vues simples,
-  utilise directement le nom de la vue.
-  La configuration d'export DWG est selectionnable parmi celles
-  enregistrees dans le projet (Exporter > Options d'export CAO) ; a
-  defaut, export AutoCAD 2018. La version de fichier de la configuration
-  choisie est respectee, mais les vues d'une feuille sont toujours
-  fusionnees en un seul DWG pour garantir le nom de fichier.
-  Le dernier dossier utilise et la derniere configuration DWG choisie
-  sont memorises entre les sessions.
+tooltip: "Exporte la vue ou la feuille active en PDF et/ou DWG, nommée selon la GED."
 author: Tony VARIN
 version: 1.6.2
 min_revit_ver: 2024

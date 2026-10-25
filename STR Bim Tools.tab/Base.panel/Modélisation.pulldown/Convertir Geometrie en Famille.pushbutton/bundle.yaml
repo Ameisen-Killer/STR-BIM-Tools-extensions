@@ -1,7 +1,5 @@
 title: Geom > Famille
-tooltip: >
-  Cree une famille RFA Modele Generique a partir des elements selectionnes dans le projet.
-  Extrait la geometrie solide, l'exporte en SAT, et genere un fichier .rfa pret a l'emploi.
+tooltip: "Crée une famille à partir des éléments sélectionnés."
 author: Tony VARIN
 version: 1.0.1
 min_revit_ver: 2024

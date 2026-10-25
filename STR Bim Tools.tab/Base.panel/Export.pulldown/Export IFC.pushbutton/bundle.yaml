@@ -1,12 +1,5 @@
 title: Export IFC
-tooltip: >
-  Exporte par lot les vues 3D du projet vers des fichiers IFC, un fichier par vue.
-  Transmet a l'exporteur la totalite des options du panneau Revit (elements acier,
-  representation solide, niveau de detail, jeux de proprietes, georeferencement,
-  phase), ce qui donne des IFC aussi complets qu'un export lance manuellement.
-  Permet aussi de reprendre un setup IFC enregistre dans le modele.
-  Selection multiple avec filtre par nom, controle des ecrasements, verification de
-  chaque fichier produit, journal .log optionnel, options memorisees entre sessions.
+tooltip: "Exporte plusieurs vues 3D en IFC, un fichier par vue."
 author: Tony VARIN
 version: 3.6.2
 min_revit_ver: 2024

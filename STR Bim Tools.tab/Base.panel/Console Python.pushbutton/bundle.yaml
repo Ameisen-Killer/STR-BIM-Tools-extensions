@@ -1,5 +1,5 @@
 tooltip:
-  fr_fr: Console pour exécution d'un script PyThon
+  fr_fr: "Console Python."
 
 engine:
   clean: true

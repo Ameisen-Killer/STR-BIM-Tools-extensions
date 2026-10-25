@@ -1,37 +1,5 @@
 title: Elevation mur courbe
-tooltip: >
-  Cree l'elevation DEVELOPPEE d'un mur courbe : la face que vous regardez est
-  deroulee a plat et dessinee en 2D strict dans une vue de dessin.
-  Cliquez directement sur la face du mur depuis laquelle regarder (le cote du
-  clic determine la face), ou preselectionnez le mur avant de lancer l'outil.
-  L'API Revit ne sait pas creer d'elevation developpee : le resultat est donc
-  un dessin en lignes de detail, fige. Relancer l'outil depuis la vue qu'il a
-  creee propose de la regenerer a partir du modele actuel.
-  Le plan de vue est pose sur la face regardee et se comporte comme celui
-  d'une vraie elevation. Le mur en est le sujet : le plan lui est tangent, il
-  ne le coupe pas. Le mur est donc en "STR_Ligne vue" — contour exterieur,
-  portes, fenetres, reservations. Une elevation de mur courbe isole ne
-  contient que des lignes vues.
-  Un voisin que le plan de vue traverse reellement, comme un mur ou une dalle
-  qui bute sur la face regardee, recoit sa vraie section en "STR_Ligne
-  coupee". Ce que le mur masque, typiquement un element qui touche la face
-  opposee, passe en "STR_Ligne cachee" jusqu'au fond de vue place a 10 cm
-  au-dela de cette face. Ce qui est devant le plan de vue n'est pas dessine.
-  Un champ de la fenetre decale le plan de vue en avant de la face, en cm :
-  a 0 un poteau plaque contre la face sort du champ, l'augmenter le fait
-  apparaitre et coupe ce que le plan traverse alors. La valeur est memorisee.
-  Chaque niveau du projet compris dans la hauteur du cadre recoit une ligne
-  horizontale traversant le dessin, avec son nom et son altitude.
-  Les quatre sous-categories de lignes sont creees dans le projet si elles
-  n'existent pas.
-  Les elements en contact (dalles, radiers, murs en continuite, poteaux) sont
-  analysees comme dans "Elevation sur mur" : la vue est cadree a 50 cm au-dela
-  d'eux.
-  Le gabarit de vue se choisit dans la fenetre et est memorise d'une session a
-  l'autre ; seuls les gabarits de vue de dessin sont proposables. Sans gabarit,
-  la vue est creee en 1:50, niveau de detail Eleve.
-  Pour un mur DROIT, preferez "Elevation sur mur" : il cree une vraie vue
-  Revit, liee au modele.
+tooltip: "Dessine l'élévation développée d'un mur courbe."
 author: Tony VARIN
 version: 1.2.0
 min_revit_ver: 2024

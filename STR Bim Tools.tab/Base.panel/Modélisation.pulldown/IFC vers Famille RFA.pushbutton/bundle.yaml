@@ -1,11 +1,5 @@
 title: IFC vers Famille RFA
-tooltip: >
-  Convertit un ou plusieurs fichiers IFC en familles Revit (.rfa) par lot.
-  Selectionner le dossier source contenant les IFC, un dossier de sortie et un
-  gabarit de famille (.rft). Chaque IFC est ouvert nativement (OpenIFCDocument),
-  sa geometrie exportee en SAT, importee dans une famille vierge puis eclatee
-  en solides natifs (FreeFormElement) individuellement selectionnables.
-  Double-clic sur une ligne ERREUR pour voir le detail complet.
+tooltip: "Convertit des fichiers IFC en familles Revit, par lot."
 author: Tony VARIN
 version: 1.3.1
 min_revit_ver: 2024

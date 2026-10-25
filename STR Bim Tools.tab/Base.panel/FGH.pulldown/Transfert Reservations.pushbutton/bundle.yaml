@@ -1,32 +1,5 @@
 title: "Sync\nReservations"
-tooltip: >
-  Compare les reservations FGH_RES* de la maquette STR avec celles de la maquette
-  SPV liee, puis reporte les ecarts dans la STR. Quatre cas traites : nouvelles
-  reservations validees a copier, reservations modifiees a remplacer, reservations
-  annulees par le demandeur et reservations dont la validation a ete retiree ou
-  refusee apres integration ; les elements remplaces ou annules sont marques
-  SUPPRIMEE, les elements copies sont epingles et places dans le sous-projet
-  03_STR_RESERVATIONS.
-  Barre de filtres en haut de la fenetre : statut de validation, date de validation
-  (dates du lien avec leur effectif, de la plus recente a la plus ancienne), statut
-  de synchronisation et recherche libre. Cocher affiches ne coche que les lignes
-  visibles, ce qui permet de traiter en un clic toutes les reservations VALIDE
-  d'une date donnee. Bouton Vue 3D pour cadrer la selection, export CSV de la vue
-  filtree.
-  Les familles dupliquees par les mandataires (FGH_RES_H_RECT2, _V_CIRC1...) sont
-  remappees a l'import sur les quatre familles de reference de la maquette STR
-  (FGH_RES_H_CIRC, FGH_RES_H_RECT, FGH_RES_V_CIRC, FGH_RES_V_RECT) avec transfert
-  integral des parametres d'occurrence, dimensions comprises ; le doublon devenu
-  orphelin est purge. Le compte rendu de fin liste les remappages, les purges et
-  toute famille non reconnue par la regle.
-  Depuis la v3.3.0 l'appariement se fait sur l'ADN (CONTROL_NE_PAS_TOUCHER) et non
-  plus sur le N° de reservation, qui compte 169 doublons cote SPV : environ 200
-  reservations jusque-la ecrasees a l'indexation redeviennent visibles. Un percement
-  resoumis, dont l'ADN a ete refige avec un nouvel horodatage, est rattrape par la
-  partie stable de l'ADN (N° + maquette d'origine) et traite en modification ; si
-  la correspondance n'est pas certaine des deux cotes, elle est signalee et non
-  devinee. Le controle d'ouverture porte desormais sur les ADN en doublon ou
-  absents, les N° en doublon n'etant plus qu'informatifs.
+tooltip: "Reporte dans la maquette STR les réservations nouvelles, modifiées ou annulées de la maquette SPV."
 author: Tony VARIN
 version: 3.3.0
 min_revit_ver: 2024

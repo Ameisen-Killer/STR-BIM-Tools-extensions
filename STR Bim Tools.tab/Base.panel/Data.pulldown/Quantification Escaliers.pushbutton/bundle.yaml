@@ -1,9 +1,5 @@
 title: Quantification Escaliers
-tooltip: >
-  Liste tous les escaliers du projet (escaliers Revit natifs et familles in-situ).
-  Affiche le volume, le nombre de marches, le nombre de volees et de paliers,
-  et la largeur des volees. Controle de double comptage integre.
-  Bouton Vue 3D pour isoler un escalier selectionne. Export XLSX complet.
+tooltip: "Quantifie les escaliers (volume, marches, volées). Export Excel."
 author: Tony VARIN
 version: 1.0.0
 min_revit_ver: 2024

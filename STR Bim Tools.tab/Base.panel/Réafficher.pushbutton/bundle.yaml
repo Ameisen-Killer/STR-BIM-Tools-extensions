@@ -1,9 +1,5 @@
 title: Reafficher
-tooltip: >
-  Reaffiche en un clic tous les elements masques (Masquer les elements)
-  dans la vue active, sans devoir passer par le mode "Reveler les
-  elements masques" de Revit. Aucune selection requise : agit sur toute
-  la vue.
+tooltip: "Réaffiche tous les éléments masqués de la vue active."
 author: Tony VARIN
 version: 1.0.0
 min_revit_ver: 2024

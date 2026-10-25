@@ -6,6 +6,7 @@ SCRIPT_VERSION = "2.0.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Editeur de contraintes"
 # =============================================================================
+__doc__ = "Modifie les contraintes haute et basse d'un élément."
 
 import clr
 clr.AddReference("RevitAPI")

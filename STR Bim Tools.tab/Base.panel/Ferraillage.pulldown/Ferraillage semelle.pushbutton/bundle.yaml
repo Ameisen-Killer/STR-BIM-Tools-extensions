@@ -1,10 +1,5 @@
 title: Ferraillage semelle
-tooltip: >
-  Cree le ferraillage des semelles isolees selectionnees (ou a pointer) :
-  nappe inferieure en U, en L alternes ou droite (lit du dessous selon le
-  plus grand debord), nappe superieure, cadre de ceinture, attentes du
-  poteau pose dessus (sa configuration est reprise s'il a ete ferraille)
-  avec cadres de maintien. Inspire de RFT-Tools (Essam Kader, licence MIT).
+tooltip: "Ferraille les semelles isolées sélectionnées."
 author: Tony VARIN
 version: 1.0.0
 min_revit_ver: 2024

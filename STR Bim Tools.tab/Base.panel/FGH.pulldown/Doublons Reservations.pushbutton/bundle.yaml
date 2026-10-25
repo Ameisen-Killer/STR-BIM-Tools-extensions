@@ -1,22 +1,5 @@
 title: "Doublons\nN Resa"
-tooltip: >
-  Audit des identifiants de reservation, dans le lien SPV et dans la maquette STR.
-  Trois onglets.
-  CLES CANDIDATES : compare l'unicite du N° de reservation (cle actuelle), de l'ADN
-  brut (CONTROL_NE_PAS_TOUCHER) et de la cle N° + maquette d'origine, sur chaque
-  maquette ; puis mesure la stabilite de l'ADN entre le lien et la STR sur les
-  reservations appariables. C'est ce tableau qui dit sur quelle cle basculer la
-  synchronisation.
-  DOUBLONS DE N° : pour chaque N° porte par plusieurs objets, liste les objets et
-  mesure l'ecart entre les jumeaux. Meme position = doublons superposes inoffensifs
-  a purger cote SPV ; positions differentes = deux reservations distinctes qui
-  partagent un N°, donc une reservation perdue par la synchro, a faire renumeroter.
-  ADN DECOMPOSE : structure reelle de l'ADN (N° _ date _ heure _ STATUT _ n _
-  maquette _ revision), valeurs anormales en tete, et controle de coherence entre
-  le N° porte par l'ADN et le parametre N° de reservation.
-  Export Excel complet en quatre feuilles, a transmettre a la cellule VDC.
-  La population analysee est exactement celle de Sync Reservations (familles
-  FGH_RES*, ADN _STATUT, hors FGH_MUTUALISE et hors SUPPRIMEE).
+tooltip: "Repère les numéros de réservation en double."
 author: Tony VARIN
 version: 1.1.0
 min_revit_ver: 2024

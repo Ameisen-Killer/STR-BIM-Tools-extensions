@@ -1,11 +1,5 @@
 title: Mettre a jour ferraillage
-tooltip: >
-  Recalcule le ferraillage STR des elements selectionnes (ou de tous les
-  elements ferrailles du projet si rien n'est selectionne) avec la
-  configuration enregistree dans chacun par les outils Ferraillage mur,
-  poutre, poteau et semelle : nouvelle geometrie, appuis, element du dessus
-  ou poteau ajoute ou supprime. Les barres STR de l'element sont remplacees,
-  les autres armatures ne sont pas touchees.
+tooltip: "Recalcule le ferraillage après une modification des éléments."
 author: Tony VARIN
 version: 1.1.0
 min_revit_ver: 2024

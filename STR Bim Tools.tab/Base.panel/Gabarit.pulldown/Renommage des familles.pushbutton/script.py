@@ -7,7 +7,7 @@ SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Renommage Familles"
 # =============================================================================
 __title__ = "Majuscules\nFamilles"
-__doc__ = "Renomme familles et types : majuscules, sans accents, espaces -> _, sans parentheses ni caracteres speciaux."
+__doc__ = "Met les noms de familles et de types en majuscules, sans accents ni caractères spéciaux."
 __version__ = "2.1"
 
 from pyrevit import revit, DB, forms, script

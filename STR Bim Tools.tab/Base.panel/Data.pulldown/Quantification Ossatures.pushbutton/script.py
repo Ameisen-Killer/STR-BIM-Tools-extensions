@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 __title__   = "Rapport Ossature"
-__doc__     = "Quantification Ossatures & Poteaux"
+__doc__ = "Quantifie les ossatures et les poteaux."
 __author__  = "Tony VARIN"
 # =============================================================================
 # CONFIG

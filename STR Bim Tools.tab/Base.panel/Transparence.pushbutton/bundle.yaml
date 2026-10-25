@@ -1,10 +1,5 @@
 title: Transparence
-tooltip: >
-  Applique un niveau de transparence (0%, 20%, 40%, 60% ou 80%) aux
-  elements selectionnes dans la vue active. Selectionnez les elements,
-  ouvrez l'outil, puis cliquez sur le niveau souhaite : la transparence
-  est appliquee, la selection est retiree et la fenetre se ferme
-  automatiquement. 0% retire l'effet.
+tooltip: "Applique une transparence à la sélection dans la vue active."
 author: Tony VARIN
 version: 1.2.0
 min_revit_ver: 2024

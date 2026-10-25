@@ -1,11 +1,5 @@
 title: Ferraillage poteau
-tooltip: >
-  Cree le ferraillage des poteaux rectangulaires selectionnes (ou a
-  pointer) : barres longitudinales par face, attentes en tete si un poteau
-  ou un mur est detecte au-dessus, cadre exterieur et cadres interieurs
-  autour des barres intermediaires, en 3 zones (serres aux extremites).
-  Configuration enregistree dans le poteau pour "Mettre a jour
-  ferraillage". Inspire de RFT-Tools (Essam Kader, licence MIT).
+tooltip: "Ferraille les poteaux rectangulaires sélectionnés."
 author: Tony VARIN
 version: 1.0.0
 min_revit_ver: 2024

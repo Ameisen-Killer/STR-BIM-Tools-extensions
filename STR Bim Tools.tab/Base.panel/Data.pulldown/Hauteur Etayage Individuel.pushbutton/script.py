@@ -10,6 +10,7 @@ Pour le sol sélectionné dans Revit :
 
 Revit 2024 / pyRevit / IronPython 2.7
 """
+__doc__ = "Calcule la hauteur d'étayage sous la dalle sélectionnée."
 
 import os
 import clr

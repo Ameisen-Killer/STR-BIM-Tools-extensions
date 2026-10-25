@@ -6,6 +6,7 @@ SCRIPT_VERSION = "4.1.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Coupe sur mur lie"
 # =============================================================================
+__doc__ = "Crée une coupe sur la face d'un mur d'une maquette liée."
 # Cree une vue de coupe (ViewSection) parallele a la face d'un mur dans un lien.
 #
 # Workflow :
