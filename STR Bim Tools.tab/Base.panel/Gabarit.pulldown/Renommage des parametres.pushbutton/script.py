@@ -7,7 +7,7 @@ SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Renommage Parametres Partages"
 # =============================================================================
 __title__ = "Renommage\nParametres"
-__doc__ = "Renomme les parametres partages du projet (modifie le fichier .txt puis recree la liaison)."
+__doc__ = "Renomme des paramètres partagés du projet."
 __version__ = "3.0.1"
 
 import os, shutil, unicodedata, clr

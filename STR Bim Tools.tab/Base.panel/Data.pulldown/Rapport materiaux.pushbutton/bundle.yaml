@@ -1,9 +1,5 @@
 title: Rapport de Matériaux
-tooltip: >
-  Analyse la maquette Revit et génère un rapport de volumes de matériaux par phase.
-  Classifie chaque element en Existant conserve, Existant demoli ou Nouveau.
-  Selection de la phase de reference et des categories a analyser.
-  Export consolide en CSV et XLSX avec detail par categorie et synthese globale.
+tooltip: "Volumes de matériaux par phase (existant, démoli, nouveau). Export Excel."
 author: Tony VARIN
 version: 2.0.0
 min_revit_ver: 2024

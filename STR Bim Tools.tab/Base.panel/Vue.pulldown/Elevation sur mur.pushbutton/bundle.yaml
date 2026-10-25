@@ -1,18 +1,5 @@
 title: Elevation sur mur
-tooltip: >
-  Cree une vraie vue d'elevation Revit sur un mur du modele courant, cadree
-  automatiquement. La vue se classe sous Elevations dans l'arborescence, avec
-  un repere d'elevation pose dans une vue en plan.
-  Selectionnez un mur avant de lancer l'outil (la face de regard se choisit
-  dans la fenetre), ou lancez l'outil puis cliquez directement sur la face
-  voulue du mur.
-  L'outil analyse les elements en contact (dalles, radiers, murs en continuite,
-  poteaux) et cadre la vue a 50 cm au-dela de ces voisins. Le plan de vue est
-  place a 10 cm devant la face choisie, le fond de vue 10 cm au-dela de la face
-  opposee.
-  Le gabarit de vue se choisit dans la fenetre et est memorise d'une session a
-  l'autre. Sans gabarit, la vue est creee en 1:50, niveau de detail Eleve,
-  affichage en ligne cachee.
+tooltip: "Crée une élévation cadrée sur un mur droit."
 author: Tony VARIN
 version: 1.2.0
 min_revit_ver: 2024

@@ -8,6 +8,7 @@ Calcul automatique du niveau le plus proche en Z (filtre par emprise XY).
 Pour la contrainte haute : si aucun niveau valide XY n'est au-dessus du Z haut,
 fallback sur tous les niveaux (sans filtre XY).
 """
+__doc__ = "Cale les contraintes de plusieurs éléments sur les niveaux les plus proches."
 # =============================================================================
 # CONFIG
 # =============================================================================

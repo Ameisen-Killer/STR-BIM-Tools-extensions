@@ -1,12 +1,5 @@
 title: Ferraillage poutre
-tooltip: >
-  Cree le ferraillage des poutres selectionnees (ou a pointer) : barres
-  inferieures (1 ou 2 lits) et superieures ancrees en equerre dans les
-  appuis detectes (poteau, mur ou poutre porteuse), etriers fermes en 3
-  zones (serres pres des appuis), barres de peau des poutres hautes.
-  Section et enrobages lus sur la poutre. Configuration enregistree dans
-  la poutre pour "Mettre a jour ferraillage". Inspire de RFT-Tools
-  (Essam Kader, licence MIT).
+tooltip: "Ferraille les poutres sélectionnées."
 author: Tony VARIN
 version: 1.0.0
 min_revit_ver: 2024

@@ -6,6 +6,7 @@ SCRIPT_VERSION = "3.0.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Copie Elevations depuis Lien"
 # =============================================================================
+__doc__ = "Copie des élévations et des coupes depuis une maquette liée."
 
 import sys, os, io, traceback, clr
 clr.AddReference('PresentationFramework')

@@ -1,11 +1,5 @@
 title: Nettoyer Control
-tooltip: >
-  Tronque la valeur du parametre CONTROL_NE_PAS_TOUCHER (jusqu'au
-  marqueur _R2 inclus, plus un caractere) pour toutes les instances de
-  Modele generique dont la famille commence par FGH_RES_. Affiche un
-  tableau des elements concernes avec valeur actuelle et valeur
-  modifiee, coche par defaut ; decocher les lignes a exclure puis
-  Appliquer. Annuler ferme sans rien modifier.
+tooltip: "Raccourcit le paramètre CONTROL_NE_PAS_TOUCHER des réservations FGH_RES."
 author: Tony VARIN
 version: 1.0.0
 min_revit_ver: 2024

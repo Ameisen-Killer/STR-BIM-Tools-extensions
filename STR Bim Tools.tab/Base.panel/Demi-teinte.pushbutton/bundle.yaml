@@ -1,10 +1,5 @@
 title: Demi-teinte
-tooltip: >
-  Bascule l'affichage en demi-teinte (halftone) des elements selectionnes
-  dans la vue active. Bascule individuelle par element : chaque element
-  passe dans l'etat oppose au sien (normal -> demi-teinte, demi-teinte ->
-  normal), independamment des autres. Selectionnez les elements avant de
-  cliquer sur le bouton ; la selection est retiree apres application.
+tooltip: "Met la sélection en demi-teinte dans la vue active, ou l'enlève."
 author: Tony VARIN
 version: 1.1.0
 min_revit_ver: 2024

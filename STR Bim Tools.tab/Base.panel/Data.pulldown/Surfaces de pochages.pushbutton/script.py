@@ -7,7 +7,7 @@ SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Surfaces de Pochages"
 # =============================================================================
 __title__   = "Surface de Pochage"
-__doc__     = "Détail des surfaces des zones de pochage sélectionnées + total."
+__doc__ = "Surface des zones de pochage sélectionnées, avec le total."
 __author__  = "Tony VARIN"
 __version__ = "1.0.0"
 

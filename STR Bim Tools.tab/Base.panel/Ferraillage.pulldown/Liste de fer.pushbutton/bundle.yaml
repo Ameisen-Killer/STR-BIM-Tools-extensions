@@ -1,13 +1,5 @@
 title: Liste de fer
-tooltip: >
-  Liste de fer SIA 262 a partir des armatures Revit (Rebar, y compris les
-  barres des treillis de surface / chemin d'armatures). Une position par
-  partition + numero d'armature : nombre, diametre, longueur, longueur totale,
-  cotes exterieures en cm et figure de faconnage, commentaire en remarque.
-  Recapitulation par diametre (barres droites / faconnees), poids total et
-  diametre moyen. Perimetre : projet, vue active ou selection (armatures ou
-  elements hotes). Export Excel A4 au format des listes du bureau, avec PDF
-  automatique si Excel est installe. Cartouche memorise par projet.
+tooltip: "Liste de fer SIA 262 des armatures Revit. Export Excel et PDF."
 author: Tony VARIN
 version: 1.0.2
 min_revit_ver: 2024

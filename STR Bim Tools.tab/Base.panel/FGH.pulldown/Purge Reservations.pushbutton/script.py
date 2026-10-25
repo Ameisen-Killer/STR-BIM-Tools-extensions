@@ -7,7 +7,7 @@ SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = u"Purge Reservations Supprimees"
 # =============================================================================
 __title__ = "Purge\nReservations"
-__doc__   = "Affiche et supprime physiquement les reservations FGH_RES* marquees Supprime dans la maquette STR."
+__doc__ = "Supprime les réservations FGH_RES marquées SUPPRIMEE."
 
 # =============================================================================
 # IMPORTS — tous en tete, obligatoire IronPython

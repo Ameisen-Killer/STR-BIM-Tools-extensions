@@ -2,9 +2,7 @@ title:
   fr_fr: 'À propos'
 
 tooltip:
-  fr_fr: >
-    L'emblème STR BIM Tools et le lien vers www.str-bim-tools.com.
-    S'ouvre sans qu'une maquette soit ouverte.
+  fr_fr: "Logo STR BIM Tools et lien vers www.str-bim-tools.com."
 
 context: zero-doc
 

@@ -18,7 +18,7 @@ Compatibilité : Revit 2024 / IronPython 2.7 (pyRevit)
 
 __title__ = "Découpe le mur par les niveaux"
 __author__ = "Tony Varin"
-__doc__ = "Découpe le mur sélectionné par les niveaux qu'il traverse."
+__doc__ = "Découpe le mur sélectionné aux niveaux qu'il traverse."
 
 # ---------------------------------------------------------------------------
 # Imports

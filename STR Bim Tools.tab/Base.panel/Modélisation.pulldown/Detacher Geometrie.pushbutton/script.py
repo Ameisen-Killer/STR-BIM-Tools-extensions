@@ -10,6 +10,7 @@ Script     : unjoin_selected.py
 Revit      : 2024
 Engine     : IronPython 2.7
 """
+__doc__ = "Déjoint la géométrie des éléments sélectionnés."
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
 SCRIPT_VERSION          = u"3.2"

@@ -1,9 +1,5 @@
 title: Parametres Familles
-tooltip: >
-  Edite les parametres de tous les types d'une famille structurelle en une seule vue.
-  Selectionner un element dans le modele (poutre, poteau...) puis lancer l'outil.
-  Affiche les parametres configurables (#STR_Masse lineaire, Nuance acier, Modele...)
-  avec validation avant ecriture et annulation possible.
+tooltip: "Modifie les paramètres de tous les types d'une famille en une fois."
 author: Tony VARIN
 version: 2.2.0
 min_revit_ver: 2024

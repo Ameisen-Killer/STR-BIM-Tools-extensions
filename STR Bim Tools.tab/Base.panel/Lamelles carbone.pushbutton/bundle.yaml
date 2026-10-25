@@ -1,17 +1,5 @@
 title: Lamelles carbone
-tooltip: >
-  Quantifie les renforts en lamelle carbone collee (famille STR_Lamelle_Collee_S&P)
-  et les ancrages d'about. La largeur et l'epaisseur sont decodees du nom de type
-  (3 chiffres = largeur en mm, 2 derniers = epaisseur en dixiemes de mm) ;
-  la longueur et la presence des ancrages sont lues en parametre d'occurrence.
-  La taille d'ancrage vient des parametres Small / Large de la famille, avec repli
-  sur la largeur (>= 90 mm = gros ancrage).
-  Fenetre en deux onglets : synthese par type x niveau (nombre, metres lineaires,
-  gros et petits ancrages) et detail par lamelle. Filtres par niveau, par type et
-  par texte, bouton Selectionner pour isoler les occurrences dans Revit,
-  export XLSX en 3 feuilles (synthese, detail, recapitulatif).
-  Bouton Diagnostic : inventaire des familles du modele et, si une lamelle est
-  selectionnee dans Revit, detail complet de l'element et de ses parametres.
+tooltip: "Quantifie les lamelles carbone collées et leurs ancrages. Export Excel."
 author: Tony VARIN
 version: 1.2.0
 min_revit_ver: 2024

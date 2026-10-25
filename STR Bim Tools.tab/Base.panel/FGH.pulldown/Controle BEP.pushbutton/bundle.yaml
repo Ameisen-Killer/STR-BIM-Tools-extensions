@@ -1,40 +1,6 @@
 title: FGH - Contrôle BEP
 
-tooltip: >
-  Contrôle la maquette STR au regard du BIM Execution Plan SPVA du projet
-  Fairmont Grand Hôtel (V014) et affiche un tableau de bord des écarts.
-  Cartes de synthèse (taux de conformité, règles conformes, écarts relevés,
-  dont bloquants), taux par catégorie avec barre proportionnelle, puis deux
-  tableaux liés : les règles à gauche, le détail des éléments fautifs à
-  droite. « Sélectionner dans Revit » sélectionne et zoome sur les éléments
-  de la ligne choisie, ou sur tous ceux de la règle si aucune ligne n'est
-  cochée ; « Export XLSX » produit un classeur avec un onglet de synthèse,
-  un onglet règles et un onglet de détail par catégorie, prêt à joindre à la
-  fiche de conformité du dépôt.
-  PÉRIMÈTRE : 38 règles en 9 catégories. Projet et fichier (version Revit
-  R24, taille 350 Mo, unités cm/m2/m3/degrés) ; géoréférencement (point
-  topographique, point de base projet, angle au Nord, cube de repérage) ;
-  niveaux (présence, altitudes MN95, niveaux hors liste, calage altimétrique
-  global, éléments rattachés à un niveau hors liste) ; sous-projets (nommage,
-  éléments hors couche déclarée) ; nommage (caractères interdits, préfixe de
-  spécialité STR_) ; attributs PVA (Zone, InfraSuper, Etage, Phase, eCCC-Bât,
-  CFC, Nom_type, Resistance_feu) ; modélisation STR (capacité structurelle
-  LoadBearing des porteurs, modèles génériques et DirectShape non classés,
-  éléments sans niveau) ; réservations (format et unicité du numéro,
-  paramètres de demande et de validation, percements en attente de validation
-  STR, statut hors liste) ; feuilles et livrables (codification SPVA_GED_A à
-  H, indice de révision, nomenclatures de vues et de feuilles, annotations
-  saisies à la main sur les plans publiés).
-  Les réservations auditées sont exactement celles des outils Sync et
-  Doublons Réservations : familles FGH_RES*, hors éléments SUPPRIMEE.
-  ÉCRITURE : l'analyse est en lecture seule, mais les règles de nommage D01
-  et D03 proposent un nom conforme que vous pouvez appliquer depuis la
-  fenêtre — case « Appliquer » à cocher ligne par ligne, confirmation, puis
-  une seule transaction annulable par Ctrl+Z. Rien d'autre n'est modifié.
-  Les valeurs imposées par le BEP sont dans fgh_bep_config.json à la racine
-  de l'extension ; vos réglages de projet (jeux de caractères, familles
-  tolérées) sont saisis par le bouton « Configuration » et stockés dans
-  fgh_bep_prefs.json. Notice complète : doc/FGH_Controle_BEP.pdf.
+tooltip: "Contrôle la maquette selon le BEP du Fairmont Grand Hotel et liste les écarts."
 
 author: Tony VARIN
 version: 1.7.1
