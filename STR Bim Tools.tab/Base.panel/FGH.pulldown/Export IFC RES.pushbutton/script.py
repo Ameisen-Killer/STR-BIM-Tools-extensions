@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.2.0"
+SCRIPT_VERSION = "1.3.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Export IFC RES"
 # =============================================================================
@@ -263,6 +263,9 @@ try:
         n_res = len(fgh_res.reservations(doc))
         n_sup = len(fgh_res.reservations(doc, avec_supprimees=True)) - n_res
         n_str = len(elements_structure())
+        # les reservations ne partent que de la maquette RES : depuis la STR, ce seraient
+        # les copies deja integrees, sans les nouvelles demandes
+        est_res = fgh_res.est_maquette_res(doc)
 
         win = Window()
         win.Title = u"{}  [v{}]".format(TOOL_NAME, SCRIPT_VERSION)
@@ -282,12 +285,16 @@ try:
         Grid.SetRow(corps, 1); root.Children.Add(corps)
         corps.Children.Add(str_ui.section_hdr(u"Fichiers à créer pour str-bim-tools.com/fgh/"))
         gb = str_ui.group_box(); sp = StackPanel(); gb.Child = sp; corps.Children.Add(gb)
-        cb_res = str_ui.checkbox(u"Réservations FGH_RES de cette maquette ({}{})  →  {}.ifc".format(
-            n_res, u", {} supprimée(s) écartée(s)".format(n_sup) if n_sup else u"", radical(u"RES")), n_res > 0,
+        if est_res:
+            txt_res = u"Réservations FGH_RES de cette maquette ({}{})  →  {}.ifc".format(
+                n_res, u", {} supprimée(s) écartée(s)".format(n_sup) if n_sup else u"", radical(u"RES"))
+        else:
+            txt_res = u"Réservations : seulement depuis la maquette RES ({}…)".format(fgh_res.MAQUETTE_RES_PREFIXE)
+        cb_res = str_ui.checkbox(txt_res, est_res and n_res > 0,
             u"À lancer dans la maquette RES : c'est elle que l'ingénieur valide.")
-        cb_res.IsEnabled = n_res > 0
+        cb_res.IsEnabled = est_res and n_res > 0
         cb_str = str_ui.checkbox(u"Structure light de cette maquette ({} éléments porteurs)  →  {}.ifc".format(
-            n_str, radical(u"STR_light")), n_str > 0 and n_res == 0,
+            n_str, radical(u"STR_light")), n_str > 0 and not est_res,
             u"À lancer dans la maquette STR : murs, dalles, poteaux, poutres, fondations, escaliers.")
         cb_str.IsEnabled = n_str > 0
         sp.Children.Add(cb_res); sp.Children.Add(cb_str)

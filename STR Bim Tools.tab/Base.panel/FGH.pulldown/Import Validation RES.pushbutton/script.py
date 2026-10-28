@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.1.0"
+SCRIPT_VERSION = "1.2.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Import Validation RES"
 # =============================================================================
@@ -64,12 +64,13 @@ try:
     uidoc = __revit__.ActiveUIDocument
     app = __revit__.Application
 
-    PRET, A_JOUR, CONFLIT, RESOUMISE, AMBIGU, INTROUVABLE, ABSENT, REFUSE, DIVERGENT = (
+    PRET, A_JOUR, CONFLIT, RESOUMISE, AMBIGU, INTROUVABLE, ABSENT, REFUSE, DIVERGENT, RETRAIT = (
         u"Prêt", u"Déjà à jour", u"Changé dans Revit depuis l'export",
         u"Demande resoumise depuis l'export", u"Clé en double, élément incertain",
         u"Réservation introuvable", u"Paramètre absent ou verrouillé", u"Paramètre non autorisé",
-        u"Avis divergents entre ingénieurs")
-    COCHABLES = (PRET, CONFLIT, RESOUMISE, DIVERGENT, A_JOUR)
+        u"Avis divergents entre ingénieurs",
+        u"Retire une validation : Sync la supprimera de la STR")
+    COCHABLES = (PRET, CONFLIT, RESOUMISE, DIVERGENT, RETRAIT, A_JOUR)
 
     # --- Index de la maquette ------------------------------------------------------
     class Index(object):
@@ -147,6 +148,11 @@ try:
                         self.Statut = CONFLIT
                     elif self.Avis:
                         self.Statut = DIVERGENT
+                    elif self.Param == fgh_res.P_STATUT and fgh_res.est_valide(self.Actuel) \
+                            and not fgh_res.est_valide(self.Nouveau):
+                        # VALIDE -> autre chose : si la reservation est deja copiee dans la STR,
+                        # Sync Reservations la marquera supprimee (cas D, coche d'office la-bas) : decochee ici
+                        self.Statut = RETRAIT
                     else:
                         self.Statut = PRET
             self.AncienTxt = u"?" if self.Ancien is None else (self.Ancien or u"(vide)")
@@ -273,7 +279,9 @@ try:
         note.Text = (u"Les lignes prêtes sont cochées. « Changé dans Revit depuis l'export » et « Demande "
                      u"resoumise » sont décochées par sécurité : l'ingénieur a vu une autre version. « Avis divergents » : "
                      u"deux ingénieurs ne sont pas d'accord, la décision la plus récente est proposée. "
-                     u"Après l'import, lance « Sync Reservations » dans la maquette STR.")
+                     u"« Retire une validation » : décochée, car Sync Reservations supprimerait la réservation "
+                     u"de la STR si elle y est déjà. Après l'import : synchroniser la RES, recharger le lien "
+                     u"dans la STR, puis « Sync Reservations ».")
         col.Children.Add(note)
         barre = StackPanel(); barre.Orientation = Orientation.Horizontal; col.Children.Add(barre)
         lbl = TextBlock(); lbl.VerticalAlignment = SW.VerticalAlignment.Center
@@ -373,15 +381,21 @@ try:
                                 MessageBoxButton.OK, MessageBoxImage.Information)
                 return
             n_risque = sum(1 for r in cibles if r.Statut in (CONFLIT, RESOUMISE, DIVERGENT))
+            n_retrait = sum(1 for r in cibles if r.Statut == RETRAIT)
             msg = u"Écrire {} valeur(s) dans la maquette RES ?".format(len(cibles))
             if n_risque:
-                msg += (u"\n\nDont {} changée(s) dans Revit ou resoumise(s) depuis l'export : "
+                msg += (u"\n\nDont {} changée(s) dans Revit, resoumise(s) ou contestée(s) depuis l'export : "
                         u"la valeur actuelle sera remplacée.").format(n_risque)
+            if n_retrait:
+                msg += (u"\n\nDont {} réservation(s) VALIDE qui ne le seront plus : si elles sont déjà "
+                        u"dans la STR, « Sync Reservations » proposera de les supprimer.").format(n_retrait)
             if MessageBox.Show(msg, TOOL_NAME, MessageBoxButton.YesNo,
                                MessageBoxImage.Question) != MessageBoxResult.Yes:
                 return
             n, ko = ecrire(cibles)
-            txt = u"{} valeur(s) écrite(s). Lance ensuite « Sync Reservations » dans la maquette STR.".format(n)
+            txt = (u"{} valeur(s) écrite(s).\n\nEnsuite : synchronise la maquette RES avec le fichier central, "
+                   u"puis dans la maquette STR recharge le lien RES avant de lancer « Sync Reservations » "
+                   u"(il lit le lien, pas cette maquette).").format(n)
             if ko:
                 txt += u"\n{} écriture(s) impossible(s) (élément pris par un autre utilisateur ?).".format(ko)
             MessageBox.Show(txt, TOOL_NAME, MessageBoxButton.OK,
@@ -400,6 +414,12 @@ try:
         return win
 
     def main():
+        if not fgh_res.est_maquette_res(doc):
+            MessageBox.Show(u"Ouvre la maquette RES ({}…) : c'est elle que lit « Sync Reservations ». "
+                            u"Une validation écrite dans une autre maquette ne serait jamais reprise.".format(
+                                fgh_res.MAQUETTE_RES_PREFIXE), TOOL_NAME,
+                            MessageBoxButton.OK, MessageBoxImage.Warning)
+            return
         dlg = OpenFileDialog()
         dlg.Title = u"Fichier(s) de validation des réservations (str-bim-tools.com/fgh)"
         dlg.Multiselect = True
@@ -424,7 +444,12 @@ try:
             MessageBox.Show(u"Le fichier ne contient aucune modification.", TOOL_NAME,
                             MessageBoxButton.OK, MessageBoxImage.Information)
             return
-        ordre = {PRET: 0, DIVERGENT: 1, CONFLIT: 2, RESOUMISE: 3, A_JOUR: 4}
+        # date et commentaire suivent le statut : decoches avec un retrait de validation
+        retraits = set(fgh_res.id_int(r.ElemId) for r in rows if r.Statut == RETRAIT)
+        for r in rows:
+            if r.ElemId is not None and fgh_res.id_int(r.ElemId) in retraits:
+                r.IsSelected = False
+        ordre = {PRET: 0, RETRAIT: 1, DIVERGENT: 2, CONFLIT: 3, RESOUMISE: 4, A_JOUR: 5}
         ordre_p = dict((p, i) for i, p in enumerate(fgh_res.PARAMS_VAL))
         rows.sort(key=lambda r: (ordre.get(r.Statut, 5), r.Niveau, r.Num, ordre_p.get(r.Param, 9)))
         fenetre(chemins, docs[0], rows).ShowDialog()
