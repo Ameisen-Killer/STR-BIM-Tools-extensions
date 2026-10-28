@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.0.0"
+SCRIPT_VERSION = "1.1.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Import Validation RES"
 # =============================================================================
@@ -17,6 +17,10 @@ TOOL_NAME      = "FGH - Import Validation RES"
 #      Control » = accepte ; ADN different = reservation resoumise depuis
 #      l'export, ligne decochee (l'ingenieur a juge l'ancienne demande).
 # Une valeur changee dans Revit depuis l'export est signalee et decochee.
+# Plusieurs fichiers (un par ingenieur) ou un fichier partage : par
+# reservation et parametre, la decision la plus recente gagne ; un avis
+# different d'un autre ingenieur decoche la ligne. Les decisions annulees
+# (« retire ») ne sont jamais appliquees.
 # Rien n'est ecrit sans validation, en une seule transaction.
 # =============================================================================
 
@@ -60,11 +64,12 @@ try:
     uidoc = __revit__.ActiveUIDocument
     app = __revit__.Application
 
-    PRET, A_JOUR, CONFLIT, RESOUMISE, AMBIGU, INTROUVABLE, ABSENT, REFUSE = (
+    PRET, A_JOUR, CONFLIT, RESOUMISE, AMBIGU, INTROUVABLE, ABSENT, REFUSE, DIVERGENT = (
         u"Prêt", u"Déjà à jour", u"Changé dans Revit depuis l'export",
         u"Demande resoumise depuis l'export", u"Clé en double, élément incertain",
-        u"Réservation introuvable", u"Paramètre absent ou verrouillé", u"Paramètre non autorisé")
-    COCHABLES = (PRET, CONFLIT, RESOUMISE, A_JOUR)
+        u"Réservation introuvable", u"Paramètre absent ou verrouillé", u"Paramètre non autorisé",
+        u"Avis divergents entre ingénieurs")
+    COCHABLES = (PRET, CONFLIT, RESOUMISE, DIVERGENT, A_JOUR)
 
     # --- Index de la maquette ------------------------------------------------------
     class Index(object):
@@ -111,6 +116,8 @@ try:
             self.Uid = norm(m.get(u"unique_id"))
             self.Ancien = None if m.get(u"ancien") is None else norm(m.get(u"ancien"))
             self.Nouveau = norm(m.get(u"nouveau"))
+            self.Par = norm(m.get(u"par"))
+            self.Avis = norm(m.get(u"_avis"))
             self.ElemId = None
             self.Actuel = u""
             el, self.Corresp, force = index.trouver(self.Cle, self.Uid)
@@ -138,6 +145,8 @@ try:
                         self.Statut = force
                     elif self.Ancien is not None and self.Actuel != self.Ancien:
                         self.Statut = CONFLIT
+                    elif self.Avis:
+                        self.Statut = DIVERGENT
                     else:
                         self.Statut = PRET
             self.AncienTxt = u"?" if self.Ancien is None else (self.Ancien or u"(vide)")
@@ -159,6 +168,40 @@ try:
             raise ValueError(u"Fichier créé par une version plus récente de la page : "
                              u"fais « Mise à jour » de l'extension.")
         return d
+
+    def fusionner(docs):
+        """Decisions de plusieurs fichiers : par (reservation, parametre), la plus
+        recente gagne (champ quand, sinon date du fichier). Les avis differents
+        des autres ingenieurs sont notes dans _avis. Les annulations ne gardent
+        rien a appliquer."""
+        groupes = {}
+        for d in docs:
+            date_doc = norm(d.get(u"date"))
+            for m in (d.get(u"modifications") or []):
+                if not isinstance(m, dict):
+                    continue
+                cle = (norm(m.get(u"cle")) or u"uid:" + norm(m.get(u"unique_id")), norm(m.get(u"parametre")))
+                m = dict(m)
+                m[u"_q"] = norm(m.get(u"quand")) or date_doc
+                if not norm(m.get(u"par")):
+                    m[u"par"] = norm(d.get(u"auteur"))
+                groupes.setdefault(cle, []).append(m)
+        out = []
+        for cle in groupes:
+            l = sorted(groupes[cle], key=lambda x: x[u"_q"])
+            m = l[-1]
+            if m.get(u"retire"):
+                continue
+            autres = []
+            for x in l[:-1]:
+                if not x.get(u"retire") and norm(x.get(u"nouveau")) != norm(m.get(u"nouveau")) \
+                        and norm(x.get(u"par")) != norm(m.get(u"par")):
+                    t = u"{} : {}".format(norm(x.get(u"par")) or u"?", norm(x.get(u"nouveau")) or u"(vide)")
+                    if t not in autres:
+                        autres.append(t)
+            m[u"_avis"] = u" ; ".join(autres)
+            out.append(m)
+        return out
 
     def ecrire(cibles):
         n = ko = 0
@@ -190,7 +233,7 @@ try:
         return n, ko
 
     # --- Fenetre ---------------------------------------------------------------
-    def fenetre(chemin, d, rows):
+    def fenetre(chemins, d, rows):
         win = Window()
         win.Title = u"{}  [v{}]".format(TOOL_NAME, SCRIPT_VERSION)
         win.Width = 1200; win.Height = 660; win.MinWidth = 880; win.MinHeight = 400
@@ -211,10 +254,11 @@ try:
         col = StackPanel(); fb.Child = col
         info = TextBlock(); info.TextWrapping = SW.TextWrapping.Wrap; info.FontSize = 11.5
         maq = d.get(u"maquette") or {}
-        info.Text = u"Fichier : {}\nValidé par : {}   |   le {}   |   IFC exporté le {} depuis « {} »".format(
-            os.path.basename(chemin), d.get(u"auteur") or u"(non renseigné)",
-            (d.get(u"date") or u"?")[:16].replace(u"T", u" "), maq.get(u"export_du") or u"?",
-            maq.get(u"nom") or u"?")
+        par = sorted(set(r.Par for r in rows if r.Par))
+        info.Text = u"Fichier{} : {}\nValidé par : {}   |   IFC exporté le {} depuis « {} »".format(
+            u"s" if len(chemins) > 1 else u"", u", ".join(os.path.basename(c) for c in chemins),
+            u", ".join(par) or d.get(u"auteur") or u"(non renseigné)",
+            maq.get(u"export_du") or u"?", maq.get(u"nom") or u"?")
         col.Children.Add(info)
         nom_maq = (maq.get(u"nom") or u"").strip().lower()
         if nom_maq and nom_maq not in (doc.Title or u"").lower() and (doc.Title or u"").lower() not in nom_maq:
@@ -227,7 +271,8 @@ try:
         note = TextBlock(); note.TextWrapping = SW.TextWrapping.Wrap; note.FontSize = 11
         note.Foreground = str_ui.couleur("texte_gris"); note.Margin = Thickness(0, 4, 0, 6)
         note.Text = (u"Les lignes prêtes sont cochées. « Changé dans Revit depuis l'export » et « Demande "
-                     u"resoumise » sont décochées par sécurité : l'ingénieur a vu une autre version. "
+                     u"resoumise » sont décochées par sécurité : l'ingénieur a vu une autre version. « Avis divergents » : "
+                     u"deux ingénieurs ne sont pas d'accord, la décision la plus récente est proposée. "
                      u"Après l'import, lance « Sync Reservations » dans la maquette STR.")
         col.Children.Add(note)
         barre = StackPanel(); barre.Orientation = Orientation.Horizontal; col.Children.Add(barre)
@@ -264,7 +309,9 @@ try:
         colonne(u"Actuel Revit", "ActuelTxt", 120, True)
         colonne(u"À l'export", "AncienTxt", 110)
         colonne(u"Nouveau", "NouveauTxt", 150, True)
-        colonne(u"Trouvée par", "Corresp", 120)
+        colonne(u"Par", "Par", 110)
+        colonne(u"Autres avis", "Avis", 150)
+        colonne(u"Trouvée par", "Corresp", 110)
         colonne(u"Statut", "Statut", 210)
         Grid.SetRow(dg, 2); root.Children.Add(dg)
 
@@ -325,7 +372,7 @@ try:
                 MessageBox.Show(u"Aucune ligne cochée.", TOOL_NAME,
                                 MessageBoxButton.OK, MessageBoxImage.Information)
                 return
-            n_risque = sum(1 for r in cibles if r.Statut in (CONFLIT, RESOUMISE))
+            n_risque = sum(1 for r in cibles if r.Statut in (CONFLIT, RESOUMISE, DIVERGENT))
             msg = u"Écrire {} valeur(s) dans la maquette RES ?".format(len(cibles))
             if n_risque:
                 msg += (u"\n\nDont {} changée(s) dans Revit ou resoumise(s) depuis l'export : "
@@ -354,30 +401,33 @@ try:
 
     def main():
         dlg = OpenFileDialog()
-        dlg.Title = u"Fichier de validation des réservations (str-bim-tools.com/fgh)"
+        dlg.Title = u"Fichier(s) de validation des réservations (str-bim-tools.com/fgh)"
+        dlg.Multiselect = True
         dlg.Filter = u"Validation RES (*.json)|*.json|Tous les fichiers (*.*)|*.*"
         dl = os.path.join(os.environ.get("USERPROFILE", u""), u"Downloads")
         if os.path.isdir(dl):
             dlg.InitialDirectory = dl
         if not dlg.ShowDialog():
             return
-        chemin = dlg.FileName
-        try:
-            d = lire_fichier(chemin)
-        except Exception as ex:
-            MessageBox.Show(u"Fichier illisible :\n{}".format(ex), TOOL_NAME,
-                            MessageBoxButton.OK, MessageBoxImage.Warning)
-            return
+        chemins = list(dlg.FileNames)
+        docs = []
+        for chemin in chemins:
+            try:
+                docs.append(lire_fichier(chemin))
+            except Exception as ex:
+                MessageBox.Show(u"Fichier illisible : {}\n{}".format(os.path.basename(chemin), ex), TOOL_NAME,
+                                MessageBoxButton.OK, MessageBoxImage.Warning)
+                return
         index = Index()
-        rows = [Row(m, index) for m in (d.get(u"modifications") or []) if isinstance(m, dict)]
+        rows = [Row(m, index) for m in fusionner(docs)]
         if not rows:
             MessageBox.Show(u"Le fichier ne contient aucune modification.", TOOL_NAME,
                             MessageBoxButton.OK, MessageBoxImage.Information)
             return
-        ordre = {PRET: 0, CONFLIT: 1, RESOUMISE: 2, A_JOUR: 3}
+        ordre = {PRET: 0, DIVERGENT: 1, CONFLIT: 2, RESOUMISE: 3, A_JOUR: 4}
         ordre_p = dict((p, i) for i, p in enumerate(fgh_res.PARAMS_VAL))
-        rows.sort(key=lambda r: (ordre.get(r.Statut, 4), r.Niveau, r.Num, ordre_p.get(r.Param, 9)))
-        fenetre(chemin, d, rows).ShowDialog()
+        rows.sort(key=lambda r: (ordre.get(r.Statut, 5), r.Niveau, r.Num, ordre_p.get(r.Param, 9)))
+        fenetre(chemins, docs[0], rows).ShowDialog()
 
     main()
 
