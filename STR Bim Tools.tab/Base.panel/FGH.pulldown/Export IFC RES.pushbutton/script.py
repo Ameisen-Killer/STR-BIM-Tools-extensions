@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.1.0"
+SCRIPT_VERSION = "1.2.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Export IFC RES"
 # =============================================================================
@@ -52,6 +52,7 @@ try:
                                    FailureSeverity)
     import str_ifc
     import str_ui
+    import str_progression
     import fgh_res
 
     doc = __revit__.ActiveUIDocument.Document
@@ -138,9 +139,21 @@ try:
             return (FailureProcessingResult.ProceedWithRollBack if erreur
                     else FailureProcessingResult.Continue)
 
-    def exporter(dossier, nom, cats_gardees, garder):
+    # Barre de progression par etapes : l'export IFC de Revit est un seul appel
+    # bloquant, sans avancement interne, donc on annonce chaque etape avant de la lancer.
+    _prog = {"p": None, "n": 0, "t0": None}
+
+    def etape(texte):
+        p = _prog["p"]
+        if p is None:
+            return
+        _prog["n"] += 1
+        p.etape(u"{}\nDémarré à {}".format(texte, datetime.datetime.now().strftime("%H:%M:%S")), _prog["n"] - 1)
+
+    def exporter(dossier, nom, cats_gardees, garder, quoi=u""):
         """Vue 3D temporaire qui ne montre que ce qu'il faut, export IFC filtre
         sur elle, puis tout est annule. Retourne (chemin ou None, messages)."""
+        etape(u"{} : préparation de la vue 3D temporaire…".format(quoi))
         chemin = os.path.join(dossier, nom + u".ifc")
         if os.path.isfile(chemin):
             os.remove(chemin)
@@ -171,6 +184,7 @@ try:
                     pass
             t.Commit()
 
+            etape(u"{} : filtrage des éléments de la vue…".format(quoi))
             t = Transaction(doc, u"STR - FGH : filtre de la vue")
             t.Start()
             cacher = [e.Id for e in FilteredElementCollector(doc, vue.Id)
@@ -180,6 +194,7 @@ try:
                 vue.HideElements(List[ElementId](cacher))
             t.Commit()
 
+            etape(u"{} : export IFC par Revit (étape la plus longue, Revit ne répond plus pendant ce temps)…".format(quoi))
             t = Transaction(doc, u"STR - FGH : export IFC")
             t.Start()
             ech = Echecs()
@@ -208,9 +223,11 @@ try:
         cats = set(fgh_res.id_int(e.Category.Id) for e in res if e.Category is not None)
         def garder(e):
             return fgh_res.id_int(e.Id) in ids
-        chemin, msgs = exporter(dossier, radical(u"RES"), cats, garder)
+        chemin, msgs = exporter(dossier, radical(u"RES"), cats, garder,
+                                u"Réservations ({})".format(len(res)))
         if not chemin:
             return u"Réservations : l'export n'a produit aucun fichier.\n" + u"\n".join(msgs[:5])
+        etape(u"Réservations : ajout des données de validation dans l'IFC…")
         quand = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
         par_eid = dict((u"{}".format(fgh_res.id_int(e.Id)), fgh_res.donnees(doc, e, quand)) for e in res)
         n, absents = fgh_res.injecter(chemin, par_eid)
@@ -233,7 +250,8 @@ try:
             return u"Structure : aucun élément porteur dans cette maquette."
         def garder(e):
             return fgh_res.id_int(e.Id) in ids and not fgh_res.est_reservation(e)
-        chemin, msgs = exporter(dossier, radical(u"STR_light"), ids_categories(CATS_STRUCTURE), garder)
+        chemin, msgs = exporter(dossier, radical(u"STR_light"), ids_categories(CATS_STRUCTURE), garder,
+                                u"Structure light ({} éléments)".format(len(ids)))
         if not chemin:
             return u"Structure : l'export n'a produit aucun fichier.\n" + u"\n".join(msgs[:5])
         return u"Structure light : {} élément(s) → {} ({:.1f} Mo)".format(
@@ -315,7 +333,14 @@ try:
             prefs[u"dossier"] = dossier; ecrire_prefs(prefs)
             lignes = []
             win.Cursor = SW.Input.Cursors.Wait
+            prog = str_progression.Progression(u"{}  [v{}]".format(TOOL_NAME, SCRIPT_VERSION),
+                                               u"STR BIM Tools by Tony Varin")
+            _prog["p"] = prog; _prog["n"] = 0
+            prog.win.Height = 190; prog.win.Width = 520
+            prog.lbl.TextWrapping = SW.TextWrapping.Wrap
             try:
+                prog.demarrer((4 if cb_res.IsChecked else 0) + (3 if cb_str.IsChecked else 0),
+                              u"Préparation…")
                 if cb_res.IsChecked:
                     lignes.append(exporter_reservations(dossier))
                 if cb_str.IsChecked:
@@ -323,6 +348,8 @@ try:
             except Exception as ex:
                 lignes.append(u"Erreur : {}".format(ex))
             finally:
+                _prog["p"] = None
+                prog.fin()
                 win.Cursor = None
             lbl_res.Text = u"\n".join(lignes)
             lbl_res.Foreground = str_ui.couleur("ok")
