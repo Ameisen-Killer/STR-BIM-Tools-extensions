@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.0.0"
+SCRIPT_VERSION = "1.1.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Export IFC RES"
 # =============================================================================
@@ -216,6 +216,9 @@ try:
         n, absents = fgh_res.injecter(chemin, par_eid)
         sans_adn = sum(1 for e in res if not fgh_res.adn(e))
         txt = u"Réservations : {} exportée(s) → {}".format(len(par_eid) - len(absents), os.path.basename(chemin))
+        n_sup = len(fgh_res.reservations(doc, avec_supprimees=True)) - len(res)
+        if n_sup:
+            txt += u"\n   {} supprimée(s) ({} coché) non exportée(s)".format(n_sup, fgh_res.SUPPRIME_PARAM)
         if absents:
             txt += u"\n   {} sans géométrie dans l'IFC (ElementId {}{})".format(
                 len(absents), u", ".join(absents[:8]), u"…" if len(absents) > 8 else u"")
@@ -240,6 +243,7 @@ try:
     def fenetre():
         prefs = lire_prefs()
         n_res = len(fgh_res.reservations(doc))
+        n_sup = len(fgh_res.reservations(doc, avec_supprimees=True)) - n_res
         n_str = len(elements_structure())
 
         win = Window()
@@ -260,8 +264,8 @@ try:
         Grid.SetRow(corps, 1); root.Children.Add(corps)
         corps.Children.Add(str_ui.section_hdr(u"Fichiers à créer pour str-bim-tools.com/fgh/"))
         gb = str_ui.group_box(); sp = StackPanel(); gb.Child = sp; corps.Children.Add(gb)
-        cb_res = str_ui.checkbox(u"Réservations FGH_RES de cette maquette ({})  →  {}.ifc".format(
-            n_res, radical(u"RES")), n_res > 0,
+        cb_res = str_ui.checkbox(u"Réservations FGH_RES de cette maquette ({}{})  →  {}.ifc".format(
+            n_res, u", {} supprimée(s) écartée(s)".format(n_sup) if n_sup else u"", radical(u"RES")), n_res > 0,
             u"À lancer dans la maquette RES : c'est elle que l'ingénieur valide.")
         cb_res.IsEnabled = n_res > 0
         cb_str = str_ui.checkbox(u"Structure light de cette maquette ({} éléments porteurs)  →  {}.ifc".format(
