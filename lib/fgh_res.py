@@ -36,6 +36,9 @@ PSET_NOM = u"STR_FGH_RES"
 PAGE_WEB = u"https://str-bim-tools.com/fgh/"
 
 FAMILY_PREFIX = u"FGH_RES"
+# Maquette RES : meme prefixe que celui du lien lu par « Sync Reservations » dans la STR.
+# Une validation ecrite ailleurs (STR, copie) ne serait jamais lue par la synchro.
+MAQUETTE_RES_PREFIXE = u"FGH_RES_SPV"
 ADN_PARAM = u"CONTROL_NE_PAS_TOUCHER"
 SUPPRIME_PARAM = u"PVA_RES_DEM_Supprime"
 PARAM_NUM = u"PVA_RES_DEM_NumReservation"
@@ -98,6 +101,19 @@ def famille(el):
 
 def est_reservation(el):
     return isinstance(el, FamilyInstance) and famille(el).startswith(FAMILY_PREFIX)
+
+
+def est_maquette_res(doc):
+    """La maquette ouverte est-elle la maquette RES lue par Sync Reservations ?"""
+    return MAQUETTE_RES_PREFIXE.upper() in (doc.Title or u"").upper()
+
+
+def est_valide(txt):
+    """Meme lecture que Sync Reservations : 'VALID' present, negations exclues."""
+    u = (txt or u"").strip().upper()
+    if not u or u"INVALID" in u or u"NON VALID" in u or u"PAS VALID" in u:
+        return False
+    return u"VALID" in u
 
 
 def supprimee(el):
