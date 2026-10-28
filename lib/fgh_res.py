@@ -37,6 +37,7 @@ PAGE_WEB = u"https://str-bim-tools.com/fgh/"
 
 FAMILY_PREFIX = u"FGH_RES"
 ADN_PARAM = u"CONTROL_NE_PAS_TOUCHER"
+SUPPRIME_PARAM = u"PVA_RES_DEM_Supprime"
 PARAM_NUM = u"PVA_RES_DEM_NumReservation"
 
 # Parametres que la page web a le droit de changer (nom -> libelle)
@@ -99,10 +100,20 @@ def est_reservation(el):
     return isinstance(el, FamilyInstance) and famille(el).startswith(FAMILY_PREFIX)
 
 
-def reservations(doc):
-    """Instances FGH_RES* du document."""
+def supprimee(el):
+    """Reservation marquee supprimee (PVA_RES_DEM_Supprime coche)."""
+    try:
+        p = el.LookupParameter(SUPPRIME_PARAM)
+        return p is not None and p.HasValue and p.StorageType == StorageType.Integer and p.AsInteger() == 1
+    except Exception:
+        return False
+
+
+def reservations(doc, avec_supprimees=False):
+    """Instances FGH_RES* du document, sans celles marquees supprimees (sauf demande)."""
     return [e for e in FilteredElementCollector(doc).OfClass(FamilyInstance)
-            .WhereElementIsNotElementType().ToElements() if est_reservation(e)]
+            .WhereElementIsNotElementType().ToElements()
+            if est_reservation(e) and (avec_supprimees or not supprimee(e))]
 
 
 def texte_param(el, nom_param):

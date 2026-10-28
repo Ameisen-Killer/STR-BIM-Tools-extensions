@@ -76,7 +76,7 @@ try:
         def __init__(self):
             self.par_adn = {}
             self.par_uid = {}
-            for e in fgh_res.reservations(doc):
+            for e in fgh_res.reservations(doc, avec_supprimees=True):
                 self.par_uid[e.UniqueId] = e
                 k = fgh_res.adn(e)
                 if k:
