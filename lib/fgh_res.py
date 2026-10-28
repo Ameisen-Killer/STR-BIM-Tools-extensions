@@ -116,6 +116,15 @@ def est_valide(txt):
     return u"VALID" in u
 
 
+def retire_validation(txt):
+    """Meme regle que Sync Reservations (cas D) : un statut REFUSE, vide ou nie
+    retire de la STR une reservation deja copiee ; « A REVOIR » la laisse."""
+    u = (txt or u"").strip().upper()
+    if not u or (u"REFUS" in u and not est_valide(u)):
+        return True
+    return u"INVALID" in u or u"NON VALID" in u or u"PAS VALID" in u
+
+
 def supprimee(el):
     """Reservation marquee supprimee (PVA_RES_DEM_Supprime coche)."""
     try:

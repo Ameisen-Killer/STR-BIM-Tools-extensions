@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.2.0"
+SCRIPT_VERSION = "1.3.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Import Validation RES"
 # =============================================================================
@@ -149,8 +149,8 @@ try:
                     elif self.Avis:
                         self.Statut = DIVERGENT
                     elif self.Param == fgh_res.P_STATUT and fgh_res.est_valide(self.Actuel) \
-                            and not fgh_res.est_valide(self.Nouveau):
-                        # VALIDE -> autre chose : si la reservation est deja copiee dans la STR,
+                            and fgh_res.retire_validation(self.Nouveau):
+                        # VALIDE -> refuse / vide : si la reservation est deja copiee dans la STR,
                         # Sync Reservations la marquera supprimee (cas D, coche d'office la-bas) : decochee ici
                         self.Statut = RETRAIT
                     else:
@@ -387,7 +387,7 @@ try:
                 msg += (u"\n\nDont {} changée(s) dans Revit, resoumise(s) ou contestée(s) depuis l'export : "
                         u"la valeur actuelle sera remplacée.").format(n_risque)
             if n_retrait:
-                msg += (u"\n\nDont {} réservation(s) VALIDE qui ne le seront plus : si elles sont déjà "
+                msg += (u"\n\nDont {} réservation(s) VALIDE passée(s) à refusée ou vide : si elles sont déjà "
                         u"dans la STR, « Sync Reservations » proposera de les supprimer.").format(n_retrait)
             if MessageBox.Show(msg, TOOL_NAME, MessageBoxButton.YesNo,
                                MessageBoxImage.Question) != MessageBoxResult.Yes:

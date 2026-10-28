@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "3.3.0"
+SCRIPT_VERSION = "3.4.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Reservations RES vs STR"
 # =============================================================================
@@ -444,6 +444,18 @@ def _normalize_val_statut(raw):
     return raw.strip()
 
 
+def _retire_validation(val_statut):
+    """
+    Statut VAL (normalise) qui retire une reservation deja copiee dans la STR (Cas D) :
+    REFUSE, vide, ou negation explicite (INVALIDE, NON VALIDE). « A REVOIR » et tout
+    autre statut en suspens laissent la reservation en place (decision Tony 28.10.2026).
+    """
+    if not val_statut or val_statut == VAL_REFUSE:
+        return True
+    upper = val_statut.strip().upper()
+    return "INVALID" in upper or "NON VALID" in upper or "PAS VALID" in upper
+
+
 def _val_statut_sort_key(val_statut):
     """
     Cle de tri pour PVA_RES_VAL_Statut :
@@ -769,9 +781,9 @@ def compare_reservations(host_elems, link_elems):
         else:
             # Element present en local — verifier le Cas D en priorite
             # Cas D : deja copie en local + validation retiree ou refusee
-            # Condition : val_statut != VALIDE ET element present en local
-            # (couvre REFUSE, vide, et tout autre statut non-VALID)
-            if val_statut != VAL_VALIDE:
+            # Condition : statut REFUSE, vide ou nie (INVALIDE...) ET element present
+            # en local ; « A REVOIR » reste en place, compare comme les autres
+            if _retire_validation(val_statut):
                 nb_invalid += 1
                 detail_d = LBL_INVALID_DET
                 if val_statut == VAL_REFUSE:
