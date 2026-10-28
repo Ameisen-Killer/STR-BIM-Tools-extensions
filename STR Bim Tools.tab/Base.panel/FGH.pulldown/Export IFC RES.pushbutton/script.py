@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.3.0"
+SCRIPT_VERSION = "1.4.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Export IFC RES"
 # =============================================================================
@@ -254,8 +254,13 @@ try:
                                 u"Structure light ({} éléments)".format(len(ids)))
         if not chemin:
             return u"Structure : l'export n'a produit aucun fichier.\n" + u"\n".join(msgs[:5])
-        return u"Structure light : {} élément(s) → {} ({:.1f} Mo)".format(
-            len(ids), os.path.basename(chemin), os.path.getsize(chemin)/1048576.0)
+        # phase de creation : la page teinte en rose ce qui est construit en phase nouvelle
+        etape(u"Structure light : ajout de la phase de création des éléments…")
+        groupes = fgh_res.phases_structure(doc, elements_structure())
+        n_neufs = sum(len(v) for k, v in groupes.items() if k[1] == u"1")
+        fgh_res.injecter_phases(chemin, groupes)
+        return u"Structure light : {} élément(s), dont {} en phase nouvelle → {} ({:.1f} Mo)".format(
+            len(ids), n_neufs, os.path.basename(chemin), os.path.getsize(chemin)/1048576.0)
 
     # --- Fenetre ------------------------------------------------------------------
     def fenetre():
@@ -346,7 +351,7 @@ try:
             prog.win.Height = 190; prog.win.Width = 520
             prog.lbl.TextWrapping = SW.TextWrapping.Wrap
             try:
-                prog.demarrer((4 if cb_res.IsChecked else 0) + (3 if cb_str.IsChecked else 0),
+                prog.demarrer((4 if cb_res.IsChecked else 0) + (4 if cb_str.IsChecked else 0),
                               u"Préparation…")
                 if cb_res.IsChecked:
                     lignes.append(exporter_reservations(dossier))

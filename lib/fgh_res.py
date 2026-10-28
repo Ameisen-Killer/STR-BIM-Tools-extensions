@@ -33,6 +33,7 @@ from Autodesk.Revit.DB import (FamilyInstance, FilteredElementCollector,
 FORMAT = u"STR_FGH_RES_VALIDATION"
 FORMAT_VERSION = 1
 PSET_NOM = u"STR_FGH_RES"
+PSET_STR = u"STR_FGH_STR"          # phase des elements de la structure light
 PAGE_WEB = u"https://str-bim-tools.com/fgh/"
 
 FAMILY_PREFIX = u"FGH_RES"
@@ -272,10 +273,60 @@ def _arguments(s):
     return args
 
 
-def injecter(chemin_ifc, par_eid):
-    """Ajoute le jeu STR_FGH_RES aux elements de l'IFC dont le Tag (ElementId
-    ecrit par l'exporteur Revit) figure dans par_eid {u"123": [(nom, v)]}.
-    Reecrit le fichier. Retourne (nb elements IFC lies, [ElementId absents])."""
+def phase_nouvelle(doc):
+    """Id (int) de la phase « Nouvelle construction » : nom contenant « nouv »,
+    sinon la derniere phase du projet s'il y en a plusieurs. None sinon."""
+    phases = list(doc.Phases)
+    for ph in phases:
+        if u"NOUV" in (ph.Name or u"").upper():
+            return id_int(ph.Id)
+    return id_int(phases[-1].Id) if len(phases) > 1 else None
+
+
+def phases_structure(doc, eids):
+    """{(nom phase, u"1" si nouvelle sinon u"0"): [u"ElementId", ...]}."""
+    neuve, noms, out = phase_nouvelle(doc), {}, {}
+    for ph in doc.Phases:
+        noms[id_int(ph.Id)] = ph.Name or u""
+    for eid in eids:
+        el = doc.GetElement(eid)
+        try:
+            pid = id_int(el.CreatedPhaseId)
+        except Exception:
+            continue
+        if pid not in noms:
+            continue
+        cle = (noms[pid], u"1" if pid == neuve else u"0")
+        out.setdefault(cle, []).append(u"{}".format(id_int(eid)))
+    return out
+
+
+def injecter_phases(chemin_ifc, groupes):
+    """Un jeu STR_FGH_STR (Phase, Nouveau) par phase, partage par tous les elements
+    de cette phase (fichier leger). Retourne le nombre d'elements IFC lies."""
+    par_eid = {}
+    for cle, tags in groupes.items():
+        for t in tags:
+            par_eid[t] = cle
+    lignes, cibles, ent, fin = _lire_cibles(chemin_ifc, par_eid)
+    elems = {}
+    for eid_ifc, owner, tag in cibles:
+        elems.setdefault(par_eid[tag], []).append((eid_ifc, owner))
+    for cle in sorted(elems):
+        l = elems[cle]
+        props = [ent(u"IFCPROPERTYSINGLEVALUE({},$,IFCTEXT({}),$)".format(chaine_step(n), chaine_step(v)))
+                 for n, v in ((u"Phase", cle[0]), (u"Nouveau", cle[1]))]
+        pset = ent(u"IFCPROPERTYSET({},{},{},$,({}))".format(
+            chaine_step(guid_ifc()), l[0][1], chaine_step(PSET_STR), u",".join(u"#{}".format(i) for i in props)))
+        ent(u"IFCRELDEFINESBYPROPERTIES({},{},$,$,({}),#{})".format(
+            chaine_step(guid_ifc()), l[0][1], u",".join(u"#{}".format(e) for e, _o in l), pset))
+    fin(lignes)
+    return len(cibles)
+
+
+def _lire_cibles(chemin_ifc, par_eid):
+    """Lit l'IFC, repere les elements dont le Tag (ElementId) est dans par_eid.
+    Retourne (lignes, [(id STEP, owner, tag)], ent(texte) -> id, fin(lignes))."""
     with io.open(chemin_ifc, "r", encoding="latin-1", newline="") as f:
         texte = f.read()
     lignes = texte.splitlines(True)
@@ -308,6 +359,18 @@ def injecter(chemin_ifc, par_eid):
         nouvelles.append(u"#{}={};{}".format(suivant[0], t, eol))
         return suivant[0]
 
+    def fin(lignes):
+        lignes[fin_data:fin_data] = nouvelles
+        with io.open(chemin_ifc, "w", encoding="latin-1", newline="") as f:
+            f.write(u"".join(lignes))
+    return lignes, cibles, ent, fin
+
+
+def injecter(chemin_ifc, par_eid):
+    """Ajoute le jeu STR_FGH_RES aux elements de l'IFC dont le Tag (ElementId
+    ecrit par l'exporteur Revit) figure dans par_eid {u"123": [(nom, v)]}.
+    Reecrit le fichier. Retourne (nb elements IFC lies, [ElementId absents])."""
+    lignes, cibles, ent, fin = _lire_cibles(chemin_ifc, par_eid)
     groupes = {}
     for eid_ifc, owner, tag in cibles:
         groupes.setdefault(tag, []).append((eid_ifc, owner))
@@ -321,8 +384,6 @@ def injecter(chemin_ifc, par_eid):
         ent(u"IFCRELDEFINESBYPROPERTIES({},{},$,$,({}),#{})".format(
             chaine_step(guid_ifc()), elems[0][1],
             u",".join(u"#{}".format(e) for e, _o in elems), pset))
-    lignes[fin_data:fin_data] = nouvelles
-    with io.open(chemin_ifc, "w", encoding="latin-1", newline="") as f:
-        f.write(u"".join(lignes))
+    fin(lignes)
     absents = sorted((t for t in par_eid if t not in groupes), key=lambda t: (len(t), t))
     return len(cibles), absents
