@@ -1,0 +1,5 @@
+title: "Import\nValidation RES"
+tooltip: "Applique dans la maquette RES les validations faites sur la page web."
+author: Tony VARIN
+version: 1.0.0
+min_revit_ver: 2024
