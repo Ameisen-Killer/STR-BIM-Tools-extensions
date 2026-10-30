@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.3.0"
+SCRIPT_VERSION = "1.3.1"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Import Validation RES"
 # =============================================================================
@@ -144,7 +144,8 @@ try:
                         self.Statut = A_JOUR
                     elif force:
                         self.Statut = force
-                    elif self.Ancien is not None and self.Actuel != self.Ancien:
+                    elif self.Ancien is not None and not fgh_res.meme_texte(self.Actuel, self.Ancien):
+                        # aux blancs pres : l'IFC lu par la page a change les retours a la ligne en espaces
                         self.Statut = CONFLIT
                     elif self.Avis:
                         self.Statut = DIVERGENT

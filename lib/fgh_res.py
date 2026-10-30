@@ -28,7 +28,7 @@ import random
 import re
 
 from Autodesk.Revit.DB import (FamilyInstance, FilteredElementCollector,
-                               StorageType, Element)
+                               StorageType, Element, ModelPathUtils)
 
 FORMAT = u"STR_FGH_RES_VALIDATION"
 FORMAT_VERSION = 1
@@ -68,6 +68,8 @@ PARAMS_FICHE = [
     (u"RES_Demandeur", u"RES Demandeur"),
     (u"RES_Responsable", u"RES Responsable"),
     (u"COM_Phasage", u"Phasage"),
+    # Sync Reservations ignore les reservations mutualisees : la page les signale « hors synchro »
+    (u"FGH_MUTUALISE", u"Mutualise"),
 ]
 
 
@@ -107,6 +109,29 @@ def est_reservation(el):
 def est_maquette_res(doc):
     """La maquette ouverte est-elle la maquette RES lue par Sync Reservations ?"""
     return MAQUETTE_RES_PREFIXE.upper() in (doc.Title or u"").upper()
+
+
+def nom_maquette(doc):
+    """Nom stable de la maquette : celui du fichier central quand le titre de la
+    copie locale le prolonge (« <central>_<utilisateur> », il changerait d'un export
+    a l'autre), sinon le titre."""
+    titre = doc.Title or u""
+    try:
+        if doc.IsWorkshared:
+            chemin = ModelPathUtils.ConvertModelPathToUserVisiblePath(doc.GetWorksharingCentralModelPath()) or u""
+            base = re.split(r"[\\/]", chemin)[-1].strip()
+            if base.lower().endswith(u".rvt"):
+                base = base[:-4].strip()
+            if base and titre.lower().startswith(base.lower()):
+                return base
+    except Exception:
+        pass
+    return titre
+
+
+def meme_texte(a, b):
+    """Textes egaux aux blancs pres : l'IFC change les retours a la ligne en espaces."""
+    return u" ".join((a or u"").split()) == u" ".join((b or u"").split())
 
 
 def est_valide(txt):
@@ -187,7 +212,7 @@ def donnees(doc, el, export_du):
         p.append((lib, texte_param(el, nom_param)))
     for nom_param in PARAMS_VAL:
         p.append((nom_param, texte_param(el, nom_param)))
-    p.append((u"Maquette", doc.Title))
+    p.append((u"Maquette", nom_maquette(doc)))
     p.append((u"Export du", export_du))
     return p
 
