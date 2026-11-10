@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.1.0"
+SCRIPT_VERSION = "1.2.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Mise a jour STR BIM Tools"
 # =============================================================================
@@ -50,7 +50,7 @@ try:
     from pyrevit.loader import sessionmgr
 
     app = __revit__.Application
-    _FOOTER = u"v{} | STR BIM Tools by Tony Varin".format(SCRIPT_VERSION)
+    _FOOTER = u"v{} | STR BIM Tools by Tony VARIN".format(SCRIPT_VERSION)
     _TITRE  = u"Mise à jour STR BIM Tools"
 
     # script.py > Mise a jour.pushbutton > Base.panel > .tab > racine extension
@@ -130,7 +130,31 @@ try:
         def __init__(self, module, commit):
             self.Module  = module
             self.Date    = commit.Author.When.LocalDateTime.ToString("dd.MM.yyyy HH:mm")
-            self.Message = commit.MessageShort
+            self.Message = _libelle(module, commit)
+            self.Tri     = commit.Author.When.UtcDateTime.Ticks
+
+    def _libelle(module, commit):
+        """Une ligne lisible par changement.
+
+        Merge de PR GitHub : titre de la PR (2e paragraphe du message).
+        Autre merge : message du commit fusionne. Prefixe du module retire
+        (deja affiche dans la colonne Module)."""
+        texte = commit.MessageShort or u""
+        parents = list(commit.Parents)
+        if len(parents) > 1:
+            corps = [l.strip() for l in (commit.Message or u"").splitlines()[1:]
+                     if l.strip()]
+            if corps:
+                texte = corps[0]
+            else:
+                texte = parents[-1].MessageShort or texte
+        prefixe = module + u" "
+        if texte.startswith(prefixe) and len(texte) > len(prefixe) + 2:
+            reste = texte[len(prefixe):].lstrip()
+            if reste.startswith(u":"):
+                reste = reste[1:].lstrip()
+            texte = reste[:1].upper() + reste[1:]
+        return texte
 
     def _url_origine(repo):
         for remote in repo.Network.Remotes:
@@ -168,8 +192,15 @@ try:
             commit.Author.When.LocalDateTime.ToString("dd.MM.yyyy HH:mm"))
 
     def _nouveaux_commits(repo):
-        """Commits du depot distant absents de la version installee."""
+        """Commits du depot distant absents de la version installee.
+
+        Premier parent seulement : une PR fusionnee = une seule ligne
+        (le merge), sans repeter ses commits internes."""
         filt = libgit.libgit.CommitFilter()
+        try:
+            filt.FirstParentOnly = True
+        except Exception:
+            pass
         filt.IncludeReachableFrom = repo.Head.TrackedBranch.Tip
         filt.ExcludeReachableFrom = repo.Head.Tip
         filt.SortBy = libgit.libgit.CommitSortStrategies.Time
@@ -223,6 +254,7 @@ try:
                                    u"GitHub.".format(module, en_avance))
         finally:
             Mouse.OverrideCursor = None
+        lignes.sort(key=lambda l: l.Tri, reverse=True)
 
         if echecs:
             alertes.insert(0, u"Dépôt injoignable : {}. Vérifie ta connexion internet ou "
