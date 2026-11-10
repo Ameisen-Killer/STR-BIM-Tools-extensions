@@ -489,24 +489,62 @@ def noms_publics(arbre):
     return trouves
 
 
+_PORTEES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+
+
+def _noeuds_portee(racine):
+    """Noeuds de la portee de racine, sans entrer dans les fonctions imbriquees
+    (rendues a part pour qu'on leur applique leur propre portee)."""
+    a_voir = list(ast.iter_child_nodes(racine))
+    while a_voir:
+        n = a_voir.pop()
+        yield n
+        if not isinstance(n, _PORTEES):
+            a_voir.extend(ast.iter_child_nodes(n))
+
+
 def verifier_modules_lib(arbres, modules, rapport):
+    """Appels module.nom vers lib/ : un alias (import x as T) ne vaut que dans
+    sa portee, et un nom reaffecte localement (T = []) masque l'import."""
     for chemin, arbre in sorted(arbres.items()):
         courant = os.path.splitext(os.path.basename(chemin))[0]
-        locaux = {}
-        for n in ast.walk(arbre):
-            if isinstance(n, ast.Import):
-                for a in n.names:
-                    if a.name in modules and a.name != courant:
-                        locaux[a.asname or a.name] = a.name
-        for n in ast.walk(arbre):
-            if (isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
-                    and n.value.id in locaux):
-                module = locaux[n.value.id]
-                if modules[module] is not None and \
-                        n.attr not in modules[module] and \
-                        not n.attr.startswith("__"):
-                    rapport.erreur(chemin, n.lineno, "{0}.{1} n'existe pas "
-                                   "dans lib/{0}.py".format(module, n.attr))
+
+        def visiter(portee, herites):
+            locaux = dict(herites)
+            noeuds = list(_noeuds_portee(portee))
+            if isinstance(portee, _PORTEES):
+                for arg in ast.walk(portee.args):
+                    if isinstance(arg, ast.arg):
+                        locaux.pop(arg.arg, None)
+            for n in noeuds:
+                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+                    locaux.pop(n.id, None)
+                elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                    ast.ClassDef)):
+                    locaux.pop(n.name, None)
+                elif isinstance(n, (ast.Import, ast.ImportFrom)):
+                    for a in n.names:
+                        locaux.pop(a.asname or a.name.split(".")[0], None)
+            for n in noeuds:
+                if isinstance(n, ast.Import):
+                    for a in n.names:
+                        if a.name in modules and a.name != courant:
+                            locaux[a.asname or a.name] = a.name
+            for n in noeuds:
+                if (isinstance(n, ast.Attribute)
+                        and isinstance(n.value, ast.Name)
+                        and n.value.id in locaux):
+                    module = locaux[n.value.id]
+                    if modules[module] is not None and \
+                            n.attr not in modules[module] and \
+                            not n.attr.startswith("__"):
+                        rapport.erreur(chemin, n.lineno, "{0}.{1} n'existe "
+                                       "pas dans lib/{0}.py".format(module,
+                                                                   n.attr))
+                elif isinstance(n, _PORTEES):
+                    visiter(n, locaux)
+
+        visiter(arbre, {})
 
 
 def verifier_attributs(chemin, arbre, rapport):
@@ -534,7 +572,8 @@ def verifier_attributs(chemin, arbre, rapport):
                 assignes.add(noeud.args[1].value)
         for attr, ligne in sorted(lus.items(), key=lambda kv: kv[1]):
             if attr not in assignes and attr not in methodes and \
-                    attr not in HERITES:
+                    attr not in HERITES and not (attr.startswith("__")
+                                                 and attr.endswith("__")):
                 rapport.avert(chemin, ligne, "self.{0} lu mais jamais assigne "
                               "dans {1}".format(attr, classe.name))
 
