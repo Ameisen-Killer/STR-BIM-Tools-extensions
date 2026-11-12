@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.6.0"
+SCRIPT_VERSION = "1.7.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Export IFC RES"
 # =============================================================================
@@ -143,6 +143,17 @@ try:
     # Barre de progression par etapes : l'export IFC de Revit est un seul appel
     # bloquant, sans avancement interne, donc on annonce chaque etape avant de la lancer.
     _prog = {"p": None, "n": 0, "t0": None}
+    # passe a True quand le controle du nombre de reservations trouve un ecart
+    _bilan = {"alerte": False}
+
+    def controle(attendues, exportees):
+        """Deux lignes du rapport : reservations qui devaient partir / parties."""
+        ok = exportees == attendues
+        if not ok:
+            _bilan["alerte"] = True
+        return (u"Réservations à exporter : {}\nRéservations exportées : {}   {}".format(
+            attendues, exportees, u"✔ tout est parti" if ok else
+            u"⚠ il en manque {}".format(attendues - exportees)))
 
     def etape(texte):
         p = _prog["p"]
@@ -251,13 +262,14 @@ try:
         chemin, msgs = exporter(dossier, radical(u"RES"), cats, garder,
                                 u"Réservations ({})".format(len(res)), toutes_phases=True)
         if not chemin:
-            return u"Réservations : l'export n'a produit aucun fichier.\n" + u"\n".join(msgs[:5])
+            return (controle(len(res), 0) + u"\nRéservations : l'export n'a produit aucun fichier.\n" +
+                    u"\n".join(msgs[:5]))
         etape(u"Réservations : ajout des données de validation dans l'IFC…")
         quand = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
         par_eid = dict((u"{}".format(fgh_res.id_int(e.Id)), fgh_res.donnees(doc, e, quand)) for e in res)
         n, absents = fgh_res.injecter(chemin, par_eid)
         sans_adn = sum(1 for e in res if not fgh_res.adn(e))
-        txt = u"Réservations : {} exportée(s) → {}".format(len(par_eid) - len(absents), os.path.basename(chemin))
+        txt = controle(len(res), len(par_eid) - len(absents)) + u"\n   Fichier : {}".format(os.path.basename(chemin))
         n_sup = len(fgh_res.reservations(doc, avec_supprimees=True)) - len(res)
         if n_sup:
             txt += u"\n   {} supprimée(s) ({} coché) non exportée(s)".format(n_sup, fgh_res.SUPPRIME_PARAM)
@@ -397,7 +409,7 @@ try:
             win.Cursor = SW.Input.Cursors.Wait
             prog = str_progression.Progression(u"{}  [v{}]".format(TOOL_NAME, SCRIPT_VERSION),
                                                u"STR BIM Tools by Tony Varin")
-            _prog["p"] = prog; _prog["n"] = 0
+            _prog["p"] = prog; _prog["n"] = 0; _bilan["alerte"] = False
             prog.win.Height = 190; prog.win.Width = 520
             prog.lbl.TextWrapping = SW.TextWrapping.Wrap
             try:
@@ -414,7 +426,7 @@ try:
                 prog.fin()
                 win.Cursor = None
             lbl_res.Text = u"\n".join(lignes)
-            lbl_res.Foreground = str_ui.couleur("ok")
+            lbl_res.Foreground = str_ui.couleur("erreur" if _bilan["alerte"] else "ok")
             try:
                 System.Diagnostics.Process.Start(dossier)
             except Exception:
