@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.7.0"
+SCRIPT_VERSION = "1.8.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Export IFC RES"
 # =============================================================================
@@ -43,7 +43,7 @@ try:
     from System.Windows import (Window, Thickness, MessageBox, MessageBoxButton,
                                 MessageBoxImage, MessageBoxResult, WindowStartupLocation)
     from System.Windows.Controls import Grid, StackPanel, Orientation, TextBlock
-    from System.Windows.Forms import FolderBrowserDialog, DialogResult
+    from System.Windows.Forms import SaveFileDialog, DialogResult
     from System.Collections.Generic import List
     from Autodesk.Revit.DB import (FilteredElementCollector, BuiltInCategory, ElementId,
                                    Transaction, TransactionGroup, TransactionStatus,
@@ -92,6 +92,18 @@ try:
                 f.write(u"{}".format(json.dumps(p, ensure_ascii=False, indent=2)))
         except Exception:
             pass
+
+    def nom_fichier(txt, defaut):
+        """Nom saisi dans la fenetre, sans .ifc ni caracteres interdits par Windows."""
+        n = (txt or u"").strip()
+        if n.lower().endswith(u".ifc"):
+            n = n[:-4].strip()
+        n = u"".join(u"_" if c in u'\\/:*?"<>|' else c for c in n).strip(u" .")
+        return n or defaut
+
+    def sans_raccourci(txt):
+        """WPF prend le premier « _ » d'un libelle pour une touche d'acces et le masque."""
+        return txt.replace(u"_", u"__")
 
     def radical(suffixe):
         base = u"".join(c if (c.isalnum() or c in u"-_.") else u"_" for c in (doc.Title or u"maquette"))
@@ -251,7 +263,7 @@ try:
             tg.RollBack()
         return (chemin if os.path.isfile(chemin) else None), messages
 
-    def exporter_reservations(dossier):
+    def exporter_reservations(dossier, nom):
         res = fgh_res.reservations(doc)
         if not res:
             return u"Réservations : aucune famille FGH_RES* dans cette maquette."
@@ -259,7 +271,7 @@ try:
         cats = set(fgh_res.id_int(e.Category.Id) for e in res if e.Category is not None)
         def garder(e):
             return fgh_res.id_int(e.Id) in ids
-        chemin, msgs = exporter(dossier, radical(u"RES"), cats, garder,
+        chemin, msgs = exporter(dossier, nom, cats, garder,
                                 u"Réservations ({})".format(len(res)), toutes_phases=True)
         if not chemin:
             return (controle(len(res), 0) + u"\nRéservations : l'export n'a produit aucun fichier.\n" +
@@ -306,13 +318,13 @@ try:
                 sans_adn, fgh_res.ADN_PARAM)
         return txt
 
-    def exporter_structure(dossier):
+    def exporter_structure(dossier, nom):
         ids = set(fgh_res.id_int(i) for i in elements_structure())
         if not ids:
             return u"Structure : aucun élément porteur dans cette maquette."
         def garder(e):
             return fgh_res.id_int(e.Id) in ids and not fgh_res.est_reservation(e)
-        chemin, msgs = exporter(dossier, radical(u"STR_light"), ids_categories(CATS_STRUCTURE), garder,
+        chemin, msgs = exporter(dossier, nom, ids_categories(CATS_STRUCTURE), garder,
                                 u"Structure light ({} éléments)".format(len(ids)))
         if not chemin:
             return u"Structure : l'export n'a produit aucun fichier.\n" + u"\n".join(msgs[:5])
@@ -353,29 +365,54 @@ try:
         corps.Children.Add(str_ui.section_hdr(u"Fichiers à créer pour str-bim-tools.com/fgh/"))
         gb = str_ui.group_box(); sp = StackPanel(); gb.Child = sp; corps.Children.Add(gb)
         if est_res:
-            txt_res = u"Réservations FGH_RES de cette maquette ({}{})  →  {}.ifc".format(
-                n_res, u", {} supprimée(s) écartée(s)".format(n_sup) if n_sup else u"", radical(u"RES"))
+            txt_res = u"Réservations FGH_RES de cette maquette ({}{})".format(
+                n_res, u", {} supprimée(s) écartée(s)".format(n_sup) if n_sup else u"")
         else:
             txt_res = u"Réservations : seulement depuis la maquette RES ({}…)".format(fgh_res.MAQUETTE_RES_PREFIXE)
-        cb_res = str_ui.checkbox(txt_res, est_res and n_res > 0,
+        cb_res = str_ui.checkbox(sans_raccourci(txt_res), est_res and n_res > 0,
             u"À lancer dans la maquette RES : c'est elle que l'ingénieur valide.")
         cb_res.IsEnabled = est_res and n_res > 0
-        cb_str = str_ui.checkbox(u"Structure light de cette maquette ({} éléments porteurs)  →  {}.ifc".format(
-            n_str, radical(u"STR_light")), n_str > 0 and not est_res,
+        cb_str = str_ui.checkbox(u"Structure light de cette maquette ({} éléments porteurs)".format(
+            n_str), n_str > 0 and not est_res,
             u"À lancer dans la maquette STR : murs, dalles, poteaux, poutres, fondations, escaliers.")
         cb_str.IsEnabled = n_str > 0
         sp.Children.Add(cb_res); sp.Children.Add(cb_str)
 
-        corps.Children.Add(str_ui.section_hdr(u"Dossier"))
-        ligne = StackPanel(); ligne.Orientation = Orientation.Horizontal
-        tb_dos = str_ui.zone_texte(470, prefs.get(u"dossier") or os.path.join(
-            os.environ.get("USERPROFILE", u""), u"Documents"))
-        def parcourir(s, e):
-            d = FolderBrowserDialog(); d.SelectedPath = tb_dos.Text
-            if d.ShowDialog() == DialogResult.OK:
-                tb_dos.Text = d.SelectedPath
-        b = str_ui.small_btn(u"Parcourir…", parcourir); b.Margin = Thickness(6, 0, 0, 0)
-        ligne.Children.Add(tb_dos); ligne.Children.Add(b); corps.Children.Add(ligne)
+        # fichiers de sortie : « Enregistrer sous… » pour chacun (dossier + nom),
+        # proposes d'apres la maquette, memorises par maquette
+        dos_def = prefs.get(u"dossier") or os.path.join(os.environ.get("USERPROFILE", u""), u"Documents")
+        noms = prefs.get(u"fichiers") or {}
+        noms_doc = noms.get(doc.Title) or {}
+        corps.Children.Add(str_ui.section_hdr(u"Fichiers"))
+        def ligne_fichier(libelle, valeur):
+            l = StackPanel(); l.Orientation = Orientation.Horizontal; l.Margin = Thickness(0, 2, 0, 2)
+            t = TextBlock(); t.Text = libelle; t.Width = 100; t.FontSize = 11
+            t.VerticalAlignment = SW.VerticalAlignment.Center
+            tb = str_ui.zone_texte(380, valeur)
+            def enregistrer_sous(s, e):
+                d = SaveFileDialog()
+                d.Title = u"Enregistrer sous : {}".format(libelle)
+                d.Filter = u"Fichier IFC (*.ifc)|*.ifc"
+                d.DefaultExt = u"ifc"; d.AddExtension = True; d.OverwritePrompt = True
+                cour = (tb.Text or u"").strip()
+                dos = os.path.dirname(cour)
+                d.InitialDirectory = dos if dos and os.path.isdir(dos) else dos_def
+                d.FileName = os.path.basename(cour)
+                if d.ShowDialog() == DialogResult.OK:
+                    tb.Text = d.FileName
+            b = str_ui.small_btn(u"Enregistrer sous…", enregistrer_sous); b.Margin = Thickness(6, 0, 0, 0)
+            l.Children.Add(t); l.Children.Add(tb); l.Children.Add(b); corps.Children.Add(l)
+            return tb, b
+        tb_res, b_res = ligne_fichier(u"Réservations",
+            noms_doc.get(u"res") or os.path.join(dos_def, radical(u"RES") + u".ifc"))
+        tb_str, b_str = ligne_fichier(u"Structure light",
+            noms_doc.get(u"str") or os.path.join(dos_def, radical(u"STR_light") + u".ifc"))
+        def activer(s=None, e=None):
+            tb_res.IsEnabled = b_res.IsEnabled = bool(cb_res.IsChecked)
+            tb_str.IsEnabled = b_str.IsEnabled = bool(cb_str.IsChecked)
+        cb_res.Checked += activer; cb_res.Unchecked += activer
+        cb_str.Checked += activer; cb_str.Unchecked += activer
+        activer()
 
         note = TextBlock(); note.TextWrapping = SW.TextWrapping.Wrap; note.FontSize = 11
         note.Foreground = str_ui.couleur("texte_gris"); note.Margin = Thickness(0, 10, 0, 4)
@@ -397,14 +434,32 @@ try:
                 pass
 
         def go(s, e):
-            dossier = (tb_dos.Text or u"").strip()
-            if not dossier or not os.path.isdir(dossier):
-                MessageBox.Show(u"Choisis un dossier existant.", TOOL_NAME,
-                                MessageBoxButton.OK, MessageBoxImage.Warning)
-                return
             if not (cb_res.IsChecked or cb_str.IsChecked):
                 return
-            prefs[u"dossier"] = dossier; ecrire_prefs(prefs)
+            def cible(tb, defaut):
+                """(dossier, nom sans .ifc) du chemin saisi, ou None si le dossier n'existe pas."""
+                ch = (tb.Text or u"").strip().strip(u'"')
+                dos = os.path.dirname(ch)
+                if not dos or not os.path.isdir(dos):
+                    return None
+                nom = nom_fichier(os.path.basename(ch), defaut)
+                tb.Text = os.path.join(dos, nom + u".ifc")
+                return dos, nom
+            c_res = cible(tb_res, radical(u"RES")) if cb_res.IsChecked else None
+            c_str = cible(tb_str, radical(u"STR_light")) if cb_str.IsChecked else None
+            if (cb_res.IsChecked and c_res is None) or (cb_str.IsChecked and c_str is None):
+                MessageBox.Show(u"Choisis l'emplacement du fichier avec « Enregistrer sous… » "
+                                u"(le dossier doit exister).", TOOL_NAME,
+                                MessageBoxButton.OK, MessageBoxImage.Warning)
+                return
+            if c_res and c_str and tb_res.Text.lower() == tb_str.Text.lower():
+                MessageBox.Show(u"Les deux fichiers ont le même nom : change l'un des deux.", TOOL_NAME,
+                                MessageBoxButton.OK, MessageBoxImage.Warning)
+                return
+            prefs[u"dossier"] = (c_res or c_str)[0]
+            noms[doc.Title] = {u"res": tb_res.Text, u"str": tb_str.Text}
+            prefs[u"fichiers"] = noms
+            ecrire_prefs(prefs)
             lignes = []
             win.Cursor = SW.Input.Cursors.Wait
             prog = str_progression.Progression(u"{}  [v{}]".format(TOOL_NAME, SCRIPT_VERSION),
@@ -416,9 +471,9 @@ try:
                 prog.demarrer((4 if cb_res.IsChecked else 0) + (4 if cb_str.IsChecked else 0),
                               u"Préparation…")
                 if cb_res.IsChecked:
-                    lignes.append(exporter_reservations(dossier))
+                    lignes.append(exporter_reservations(*c_res))
                 if cb_str.IsChecked:
-                    lignes.append(exporter_structure(dossier))
+                    lignes.append(exporter_structure(*c_str))
             except Exception as ex:
                 lignes.append(u"Erreur : {}".format(ex))
             finally:
@@ -428,7 +483,7 @@ try:
             lbl_res.Text = u"\n".join(lignes)
             lbl_res.Foreground = str_ui.couleur("erreur" if _bilan["alerte"] else "ok")
             try:
-                System.Diagnostics.Process.Start(dossier)
+                System.Diagnostics.Process.Start(prefs[u"dossier"])
             except Exception:
                 pass
 
