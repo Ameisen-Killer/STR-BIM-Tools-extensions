@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.5.0"
+SCRIPT_VERSION = "1.6.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Export IFC RES"
 # =============================================================================
@@ -49,7 +49,8 @@ try:
                                    Transaction, TransactionGroup, TransactionStatus,
                                    View3D, ViewFamilyType, ViewFamily, CategoryType,
                                    IFailuresPreprocessor, FailureProcessingResult,
-                                   FailureSeverity)
+                                   FailureSeverity, FilteredWorksetCollector, WorksetKind,
+                                   WorksetVisibility, BuiltInParameter)
     import str_ifc
     import str_ui
     import str_progression
@@ -150,7 +151,30 @@ try:
         _prog["n"] += 1
         p.etape(u"{}\nDémarré à {}".format(texte, datetime.datetime.now().strftime("%H:%M:%S")), _prog["n"] - 1)
 
-    def exporter(dossier, nom, cats_gardees, garder, quoi=u""):
+    def ouvrir_vue(vue, toutes_phases):
+        """La vue temporaire ne doit rien cacher d'autre que ce que le filtre ecarte :
+        tous les sous-projets visibles (un sous-projet « non visible par defaut dans
+        les vues » faisait disparaitre ses elements de l'IFC) et, pour les
+        reservations, derniere phase du projet sans filtre de phase."""
+        if doc.IsWorkshared:
+            for ws in FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset):
+                try:
+                    vue.SetWorksetVisibility(ws.Id, WorksetVisibility.Visible)
+                except Exception:
+                    pass
+        if toutes_phases:
+            try:
+                phases = list(doc.Phases)
+                if phases:
+                    vue.get_Parameter(BuiltInParameter.VIEW_PHASE).Set(phases[-1].Id)
+            except Exception:
+                pass
+            try:
+                vue.get_Parameter(BuiltInParameter.VIEW_PHASE_FILTER).Set(ElementId.InvalidElementId)
+            except Exception:
+                pass
+
+    def exporter(dossier, nom, cats_gardees, garder, quoi=u"", toutes_phases=False):
         """Vue 3D temporaire qui ne montre que ce qu'il faut, export IFC filtre
         sur elle, puis tout est annule. Retourne (chemin ou None, messages)."""
         etape(u"{} : préparation de la vue 3D temporaire…".format(quoi))
@@ -174,6 +198,7 @@ try:
                 vue.IsSectionBoxActive = False
             except Exception:
                 pass
+            ouvrir_vue(vue, toutes_phases)
             for cat in doc.Settings.Categories:
                 try:
                     if fgh_res.id_int(cat.Id) in cats_gardees:
@@ -224,7 +249,7 @@ try:
         def garder(e):
             return fgh_res.id_int(e.Id) in ids
         chemin, msgs = exporter(dossier, radical(u"RES"), cats, garder,
-                                u"Réservations ({})".format(len(res)))
+                                u"Réservations ({})".format(len(res)), toutes_phases=True)
         if not chemin:
             return u"Réservations : l'export n'a produit aucun fichier.\n" + u"\n".join(msgs[:5])
         etape(u"Réservations : ajout des données de validation dans l'IFC…")
@@ -237,8 +262,33 @@ try:
         if n_sup:
             txt += u"\n   {} supprimée(s) ({} coché) non exportée(s)".format(n_sup, fgh_res.SUPPRIME_PARAM)
         if absents:
-            txt += u"\n   {} sans géométrie dans l'IFC (ElementId {}{})".format(
-                len(absents), u", ".join(absents[:8]), u"…" if len(absents) > 8 else u"")
+            par_id = dict((u"{}".format(fgh_res.id_int(e.Id)), e) for e in res)
+            def libelle(eid):
+                e = par_id.get(eid)
+                n = fgh_res.texte_param(e, u"PVA_RES_DEM_NumReservation") if e is not None else u""
+                return u"{} (Id {})".format(n, eid) if n else u"Id {}".format(eid)
+            txt += u"\n   ⚠ {} absente(s) de l'IFC : {}{}".format(
+                len(absents), u", ".join(libelle(a) for a in absents[:8]), u"…" if len(absents) > 8 else u"")
+        # causes connues d'une reservation qui ne part pas
+        try:
+            table = doc.GetWorksetTable() if doc.IsWorkshared else None
+            fermes = set()
+            for e in res:
+                if table is not None:
+                    w = table.GetWorkset(e.WorksetId)
+                    if w is not None and not w.IsOpen:
+                        fermes.add(w.Name)
+            if fermes:
+                txt += u"\n   ⚠ Sous-projet(s) fermé(s), leurs réservations ne partent pas : {}. Ouvre-les puis relance.".format(
+                    u", ".join(sorted(fermes)))
+        except Exception:
+            pass
+        try:
+            n_opt = sum(1 for e in res if e.DesignOption is not None and not e.DesignOption.IsPrimary)
+            if n_opt:
+                txt += u"\n   ⚠ {} réservation(s) dans une variante non principale : elles ne partent pas.".format(n_opt)
+        except Exception:
+            pass
         if sans_adn:
             txt += u"\n   ⚠ {} sans {} : elles ne pourront pas être retrouvées par leur clé.".format(
                 sans_adn, fgh_res.ADN_PARAM)
