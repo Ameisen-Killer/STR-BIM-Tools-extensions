@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.3.1"
+SCRIPT_VERSION = "1.4.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Import Validation RES"
 # =============================================================================
@@ -21,6 +21,8 @@ TOOL_NAME      = "FGH - Import Validation RES"
 # reservation et parametre, la decision la plus recente gagne ; un avis
 # different d'un autre ingenieur decoche la ligne. Les decisions annulees
 # (« retire ») ne sont jamais appliquees.
+# Une ligne par reservation (1.4.0) : statut, date et commentaire avant /
+# apres sur la meme ligne ; la case applique tous ses changements.
 # Rien n'est ecrit sans validation, en une seule transaction.
 # =============================================================================
 
@@ -106,7 +108,8 @@ try:
     def norm(v):
         return (u"{}".format(v) if v is not None else u"").strip()
 
-    class Row(object):
+    class Change(object):
+        """Un parametre a changer sur une reservation (une entree du JSON)."""
         def __init__(self, m, index):
             self.Param = m.get(u"parametre") or u""
             self.Libelle = fgh_res.LIBELLES_VAL.get(self.Param, self.Param)
@@ -158,13 +161,85 @@ try:
                         self.Statut = PRET
             self.AncienTxt = u"?" if self.Ancien is None else (self.Ancien or u"(vide)")
             self.NouveauTxt = self.Nouveau or u"(vide)"
-            self.ActuelTxt = self.Actuel or (u"(vide)" if el is not None else u"")
             self.Modifiable = self.Statut in COCHABLES
-            self.IsSelected = self.Statut == PRET
+
+        @property
+        def ActuelTxt(self):
+            return self.Actuel or (u"(vide)" if self.ElemId is not None else u"")
+
+        @property
+        def a_ecrire(self):
+            return self.Modifiable and self.Statut != A_JOUR and self.ElemId is not None
+
+    # gravite pour choisir l'etat affiche d'une reservation (le plus grave gagne)
+    GRAVITE = [INTROUVABLE, AMBIGU, ABSENT, REFUSE, RETRAIT, CONFLIT, RESOUMISE, DIVERGENT, PRET, A_JOUR]
+    RISQUES = (CONFLIT, RESOUMISE, DIVERGENT, RETRAIT)
+
+    class Groupe(object):
+        """Une ligne de la fenetre : une reservation et ses changements
+        (statut, date, commentaire), chacun avec sa valeur avant / apres."""
+        def __init__(self, changes):
+            ordre_p = dict((p, i) for i, p in enumerate(fgh_res.PARAMS_VAL))
+            self.changes = sorted(changes, key=lambda c: ordre_p.get(c.Param, 9))
+            c0 = self.changes[0]
+            self.ElemId = c0.ElemId
+            self.Num, self.Famille, self.Niveau, self.Id, self.Corresp = (
+                c0.Num, c0.Famille, c0.Niveau, c0.Id, c0.Corresp)
+            self.Par = u", ".join(sorted(set(c.Par for c in self.changes if c.Par)))
+            self.Avis = u" ; ".join(u"{} : {}".format(c.Libelle, c.Avis) for c in self.changes if c.Avis)
+            self.AvisInfo = self.Avis or None
+            self.maj()
+            # cochee seulement si tout est sur : aucun changement a risque
+            self.IsSelected = self.Modifiable and any(c.Statut == PRET for c in self.changes) \
+                and not any(c.Statut in RISQUES for c in self.changes)
+
+        def change(self, param):
+            for c in self.changes:
+                if c.Param == param:
+                    return c
+            return None
+
+        def maj(self):
+            self.Modifiable = any(c.a_ecrire for c in self.changes)
+            el = doc.GetElement(self.ElemId) if self.ElemId is not None else None
+            for nom, param in ((u"Statut", fgh_res.P_STATUT), (u"Date", fgh_res.P_DATE),
+                               (u"Comm", fgh_res.P_COMMENT)):
+                c = self.change(param)
+                if c is not None:
+                    avant, apres = c.ActuelTxt, c.NouveauTxt
+                    info = u"Avant : {}\nAprès : {}\nÀ l'export : {}".format(avant or u"(vide)", apres, c.AncienTxt)
+                    if c.Statut != PRET:
+                        info += u"\n" + c.Statut
+                else:
+                    # pas de changement : valeur actuelle seule, colonne apres vide
+                    p = el.LookupParameter(param) if el is not None else None
+                    avant = norm(p.AsString()) if p is not None and p.StorageType == StorageType.String else u""
+                    apres, info = u"", u"Pas de changement."
+                setattr(self, nom + u"Avant", avant)
+                setattr(self, nom + u"Apres", apres)
+                setattr(self, nom + u"Info", info)
+            etats = [c.Statut for c in self.changes]
+            pire = min(etats, key=lambda x: GRAVITE.index(x) if x in GRAVITE else 0)
+            if len(set(etats)) > 1:
+                self.Etat = u"{} ({})".format(pire, u", ".join(c.Libelle for c in self.changes
+                                                                if c.Statut == pire))
+            else:
+                self.Etat = pire
+            self.EtatInfo = u"\n".join(u"{} : {}".format(c.Libelle, c.Statut) for c in self.changes)
+            self.EtatTri = GRAVITE.index(pire) if pire in GRAVITE else 0
 
         def toggle(self):
             if self.Modifiable:
                 self.IsSelected = not self.IsSelected
+
+    def regrouper(changes):
+        groupes, ordre = {}, []
+        for c in changes:
+            k = (u"id", fgh_res.id_int(c.ElemId)) if c.ElemId is not None else (u"cle", c.Cle or c.Uid)
+            if k not in groupes:
+                groupes[k] = []; ordre.append(k)
+            groupes[k].append(c)
+        return [Groupe(groupes[k]) for k in ordre]
 
     def lire_fichier(chemin):
         with io.open(chemin, "r", encoding="utf-8-sig") as f:
@@ -210,7 +285,8 @@ try:
             out.append(m)
         return out
 
-    def ecrire(cibles):
+    def ecrire(groupes):
+        cibles = [c for g in groupes for c in g.changes if c.a_ecrire]
         n = ko = 0
         if doc.IsWorkshared:
             try:
@@ -226,13 +302,14 @@ try:
                 try:
                     if p is None or p.IsReadOnly or p.Set(r.Nouveau) is False:
                         raise Exception()
-                    r.Actuel = r.Nouveau; r.ActuelTxt = r.NouveauTxt
-                    r.Statut = A_JOUR; r.IsSelected = False
+                    r.Actuel = r.Nouveau; r.Statut = A_JOUR
                     n += 1
                 except Exception:
                     ko += 1
             if t.GetStatus() == TransactionStatus.Started:
                 t.Commit()
+            for g in groupes:
+                g.IsSelected = False; g.maj()
         except Exception:
             if t.GetStatus() == TransactionStatus.Started:
                 t.RollBack()
@@ -243,7 +320,7 @@ try:
     def fenetre(chemins, d, rows):
         win = Window()
         win.Title = u"{}  [v{}]".format(TOOL_NAME, SCRIPT_VERSION)
-        win.Width = 1200; win.Height = 660; win.MinWidth = 880; win.MinHeight = 400
+        win.Width = 1500; win.Height = 700; win.MinWidth = 1000; win.MinHeight = 400
         win.WindowStartupLocation = WindowStartupLocation.CenterScreen
         win.Background = str_ui.couleur("fond")
         root = Grid()
@@ -261,7 +338,7 @@ try:
         col = StackPanel(); fb.Child = col
         info = TextBlock(); info.TextWrapping = SW.TextWrapping.Wrap; info.FontSize = 11.5
         maq = d.get(u"maquette") or {}
-        par = sorted(set(r.Par for r in rows if r.Par))
+        par = sorted(set(c.Par for r in rows for c in r.changes if c.Par))
         info.Text = u"Fichier{} : {}\nValidé par : {}   |   IFC exporté le {} depuis « {} »".format(
             u"s" if len(chemins) > 1 else u"", u", ".join(os.path.basename(c) for c in chemins),
             u", ".join(par) or d.get(u"auteur") or u"(non renseigné)",
@@ -277,7 +354,9 @@ try:
             col.Children.Add(warn)
         note = TextBlock(); note.TextWrapping = SW.TextWrapping.Wrap; note.FontSize = 11
         note.Foreground = str_ui.couleur("texte_gris"); note.Margin = Thickness(0, 4, 0, 6)
-        note.Text = (u"Les lignes prêtes sont cochées. « Changé dans Revit depuis l'export » et « Demande "
+        note.Text = (u"Une ligne par réservation : statut, date et commentaire avant (Revit) et après (page web), "
+                     u"la case applique tous ses changements ; survole une valeur pour voir celle de l'export. "
+                     u"Les lignes prêtes sont cochées. « Changé dans Revit depuis l'export » et « Demande "
                      u"resoumise » sont décochées par sécurité : l'ingénieur a vu une autre version. « Avis divergents » : "
                      u"deux ingénieurs ne sont pas d'accord, la décision la plus récente est proposée. "
                      u"« Retire une validation » : décochée, car Sync Reservations supprimerait la réservation "
@@ -306,22 +385,34 @@ try:
         cc.Width = DataGridLength(36); cc.SortMemberPath = "IsSelected"
         dg.Columns.Add(cc)
 
-        def colonne(entete, champ, w, etoile=False):
+        def colonne(entete, champ, w, etoile=False, info=None, gras=False, tri=None):
             c = DataGridTextColumn(); c.Header = entete; c.Binding = Binding(champ)
-            c.Width = DataGridLength(1, DataGridLengthUnitType.Star) if etoile else DataGridLength(w)
+            c.Width = DataGridLength(w, DataGridLengthUnitType.Star) if etoile else DataGridLength(w)
+            if tri:
+                c.SortMemberPath = tri
+            if info or gras:
+                st = SW.Style(TextBlock)
+                if info:
+                    st.Setters.Add(SW.Setter(SW.FrameworkElement.ToolTipProperty, Binding(info)))
+                if gras:
+                    st.Setters.Add(SW.Setter(TextBlock.FontWeightProperty, SW.FontWeights.SemiBold))
+                st.Setters.Add(SW.Setter(TextBlock.TextTrimmingProperty, SW.TextTrimming.CharacterEllipsis))
+                c.ElementStyle = st
             dg.Columns.Add(c)
-        colonne(u"N° réservation", "Num", 110)
-        colonne(u"Famille", "Famille", 150)
-        colonne(u"Niveau", "Niveau", 80)
-        colonne(u"Id", "Id", 75)
-        colonne(u"Paramètre", "Libelle", 95)
-        colonne(u"Actuel Revit", "ActuelTxt", 120, True)
-        colonne(u"À l'export", "AncienTxt", 110)
-        colonne(u"Nouveau", "NouveauTxt", 150, True)
-        colonne(u"Par", "Par", 110)
-        colonne(u"Autres avis", "Avis", 150)
-        colonne(u"Trouvée par", "Corresp", 110)
-        colonne(u"Statut", "Statut", 210)
+        colonne(u"N° réservation", "Num", 100)
+        colonne(u"Famille", "Famille", 135)
+        colonne(u"Niveau", "Niveau", 70)
+        colonne(u"Id", "Id", 65)
+        colonne(u"Statut avant", "StatutAvant", 85, info="StatutInfo")
+        colonne(u"Statut après", "StatutApres", 85, info="StatutInfo", gras=True)
+        colonne(u"Date avant", "DateAvant", 78, info="DateInfo")
+        colonne(u"Date après", "DateApres", 78, info="DateInfo", gras=True)
+        colonne(u"Commentaire avant", "CommAvant", 1, True, info="CommInfo")
+        colonne(u"Commentaire après", "CommApres", 1, True, info="CommInfo", gras=True)
+        colonne(u"Par", "Par", 60)
+        colonne(u"Autres avis", "Avis", 110, info="AvisInfo")
+        colonne(u"Trouvée par", "Corresp", 95)
+        colonne(u"État", "Etat", 190, info="EtatInfo", tri="EtatTri")
         Grid.SetRow(dg, 2); root.Children.Add(dg)
 
         footer, sp_btns, grid_f = str_ui.make_footer(SCRIPT_VERSION)
@@ -330,9 +421,10 @@ try:
         def compteur():
             n = {}
             for r in rows:
-                n[r.Statut] = n.get(r.Statut, 0) + 1
+                for c in r.changes:
+                    n[c.Statut] = n.get(c.Statut, 0) + 1
             coche = sum(1 for r in rows if r.IsSelected)
-            lbl.Text = u"{} ligne(s)  -  {}  -  {} cochée(s)".format(
+            lbl.Text = u"{} réservation(s)  -  changements : {}  -  {} cochée(s)".format(
                 len(rows), u", ".join(u"{} {}".format(v, k.lower())
                                      for k, v in sorted(n.items(), key=lambda x: -x[1])), coche)
 
@@ -342,7 +434,7 @@ try:
 
         def tout(s, e):
             for r in rows:
-                if r.Modifiable and r.Statut != A_JOUR:
+                if r.Modifiable:
                     r.IsSelected = True
             redraw()
 
@@ -376,16 +468,18 @@ try:
             win.Close()
 
         def appliquer(s, e):
-            cibles = [r for r in rows if r.IsSelected and r.Modifiable and r.ElemId is not None]
+            cibles = [r for r in rows if r.IsSelected and r.Modifiable]
+            nb = sum(1 for r in cibles for c in r.changes if c.a_ecrire)
             if not cibles:
                 MessageBox.Show(u"Aucune ligne cochée.", TOOL_NAME,
                                 MessageBoxButton.OK, MessageBoxImage.Information)
                 return
-            n_risque = sum(1 for r in cibles if r.Statut in (CONFLIT, RESOUMISE, DIVERGENT))
-            n_retrait = sum(1 for r in cibles if r.Statut == RETRAIT)
-            msg = u"Écrire {} valeur(s) dans la maquette RES ?".format(len(cibles))
+            n_risque = sum(1 for r in cibles if any(c.Statut in (CONFLIT, RESOUMISE, DIVERGENT)
+                                                    for c in r.changes))
+            n_retrait = sum(1 for r in cibles if any(c.Statut == RETRAIT for c in r.changes))
+            msg = u"Écrire {} valeur(s) sur {} réservation(s) dans la maquette RES ?".format(nb, len(cibles))
             if n_risque:
-                msg += (u"\n\nDont {} changée(s) dans Revit, resoumise(s) ou contestée(s) depuis l'export : "
+                msg += (u"\n\nDont {} réservation(s) changée(s) dans Revit, resoumise(s) ou contestée(s) depuis l'export : "
                         u"la valeur actuelle sera remplacée.").format(n_risque)
             if n_retrait:
                 msg += (u"\n\nDont {} réservation(s) VALIDE passée(s) à refusée ou vide : si elles sont déjà "
@@ -440,19 +534,14 @@ try:
                                 MessageBoxButton.OK, MessageBoxImage.Warning)
                 return
         index = Index()
-        rows = [Row(m, index) for m in fusionner(docs)]
-        if not rows:
+        changes = [Change(m, index) for m in fusionner(docs)]
+        if not changes:
             MessageBox.Show(u"Le fichier ne contient aucune modification.", TOOL_NAME,
                             MessageBoxButton.OK, MessageBoxImage.Information)
             return
-        # date et commentaire suivent le statut : decoches avec un retrait de validation
-        retraits = set(fgh_res.id_int(r.ElemId) for r in rows if r.Statut == RETRAIT)
-        for r in rows:
-            if r.ElemId is not None and fgh_res.id_int(r.ElemId) in retraits:
-                r.IsSelected = False
+        rows = regrouper(changes)
         ordre = {PRET: 0, RETRAIT: 1, DIVERGENT: 2, CONFLIT: 3, RESOUMISE: 4, A_JOUR: 5}
-        ordre_p = dict((p, i) for i, p in enumerate(fgh_res.PARAMS_VAL))
-        rows.sort(key=lambda r: (ordre.get(r.Statut, 5), r.Niveau, r.Num, ordre_p.get(r.Param, 9)))
+        rows.sort(key=lambda r: (ordre.get(GRAVITE[r.EtatTri], 5), r.Niveau, r.Num))
         fenetre(chemins, docs[0], rows).ShowDialog()
 
     main()
