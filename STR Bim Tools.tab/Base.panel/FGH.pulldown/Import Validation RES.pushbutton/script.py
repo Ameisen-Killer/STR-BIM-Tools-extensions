@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.4.0"
+SCRIPT_VERSION = "1.5.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Import Validation RES"
 # =============================================================================
@@ -23,6 +23,9 @@ TOOL_NAME      = "FGH - Import Validation RES"
 # (« retire ») ne sont jamais appliquees.
 # Une ligne par reservation (1.4.0) : statut, date et commentaire avant /
 # apres sur la meme ligne ; la case applique tous ses changements.
+# Date initiale gardee (1.5.0, regle de Tony) : une date deja presente dans
+# la maquette n'est jamais remplacee, meme si le statut change (REFUSE ->
+# A REVOIR, VALIDE -> A REVOIR...) ; la date n'est ecrite que si elle est vide.
 # Rien n'est ecrit sans validation, en une seule transaction.
 # =============================================================================
 
@@ -66,12 +69,13 @@ try:
     uidoc = __revit__.ActiveUIDocument
     app = __revit__.Application
 
-    PRET, A_JOUR, CONFLIT, RESOUMISE, AMBIGU, INTROUVABLE, ABSENT, REFUSE, DIVERGENT, RETRAIT = (
+    PRET, A_JOUR, CONFLIT, RESOUMISE, AMBIGU, INTROUVABLE, ABSENT, REFUSE, DIVERGENT, RETRAIT, DATE_GARDEE = (
         u"Prêt", u"Déjà à jour", u"Changé dans Revit depuis l'export",
         u"Demande resoumise depuis l'export", u"Clé en double, élément incertain",
         u"Réservation introuvable", u"Paramètre absent ou verrouillé", u"Paramètre non autorisé",
         u"Avis divergents entre ingénieurs",
-        u"Retire une validation : Sync la supprimera de la STR")
+        u"Retire une validation : Sync la supprimera de la STR",
+        u"Date initiale gardée")
     COCHABLES = (PRET, CONFLIT, RESOUMISE, DIVERGENT, RETRAIT, A_JOUR)
 
     # --- Index de la maquette ------------------------------------------------------
@@ -145,6 +149,10 @@ try:
                     self.Actuel = norm(p.AsString())
                     if self.Actuel == self.Nouveau:
                         self.Statut = A_JOUR
+                    elif self.Param == fgh_res.P_DATE and self.Actuel:
+                        # regle de Tony : la date de la premiere decision reste, un changement
+                        # de statut ne la remplace pas ; elle n'est ecrite que si elle est vide
+                        self.Statut = DATE_GARDEE
                     elif force:
                         self.Statut = force
                     elif self.Ancien is not None and not fgh_res.meme_texte(self.Actuel, self.Ancien):
@@ -172,7 +180,7 @@ try:
             return self.Modifiable and self.Statut != A_JOUR and self.ElemId is not None
 
     # gravite pour choisir l'etat affiche d'une reservation (le plus grave gagne)
-    GRAVITE = [INTROUVABLE, AMBIGU, ABSENT, REFUSE, RETRAIT, CONFLIT, RESOUMISE, DIVERGENT, PRET, A_JOUR]
+    GRAVITE = [INTROUVABLE, AMBIGU, ABSENT, REFUSE, RETRAIT, CONFLIT, RESOUMISE, DIVERGENT, PRET, DATE_GARDEE, A_JOUR]
     RISQUES = (CONFLIT, RESOUMISE, DIVERGENT, RETRAIT)
 
     class Groupe(object):
@@ -205,7 +213,13 @@ try:
             for nom, param in ((u"Statut", fgh_res.P_STATUT), (u"Date", fgh_res.P_DATE),
                                (u"Comm", fgh_res.P_COMMENT)):
                 c = self.change(param)
-                if c is not None:
+                if c is not None and c.Statut == DATE_GARDEE:
+                    # la date reste celle de la maquette : apres = avant
+                    avant = apres = c.ActuelTxt
+                    info = (u"Date initiale gardée : {}\nDate de la page ignorée : {}\n"
+                            u"Une date déjà remplie ne change pas, même si le statut change.").format(
+                                avant, c.NouveauTxt)
+                elif c is not None:
                     avant, apres = c.ActuelTxt, c.NouveauTxt
                     info = u"Avant : {}\nAprès : {}\nÀ l'export : {}".format(avant or u"(vide)", apres, c.AncienTxt)
                     if c.Statut != PRET:
@@ -360,7 +374,8 @@ try:
                      u"resoumise » sont décochées par sécurité : l'ingénieur a vu une autre version. « Avis divergents » : "
                      u"deux ingénieurs ne sont pas d'accord, la décision la plus récente est proposée. "
                      u"« Retire une validation » : décochée, car Sync Reservations supprimerait la réservation "
-                     u"de la STR si elle y est déjà. Après l'import : synchroniser la RES, recharger le lien "
+                     u"de la STR si elle y est déjà. Une date déjà remplie dans la maquette n'est jamais remplacée "
+                     u"(date initiale gardée, même si le statut change). Après l'import : synchroniser la RES, recharger le lien "
                      u"dans la STR, puis « Sync Reservations ».")
         col.Children.Add(note)
         barre = StackPanel(); barre.Orientation = Orientation.Horizontal; col.Children.Add(barre)
@@ -540,7 +555,7 @@ try:
                             MessageBoxButton.OK, MessageBoxImage.Information)
             return
         rows = regrouper(changes)
-        ordre = {PRET: 0, RETRAIT: 1, DIVERGENT: 2, CONFLIT: 3, RESOUMISE: 4, A_JOUR: 5}
+        ordre = {PRET: 0, RETRAIT: 1, DIVERGENT: 2, CONFLIT: 3, RESOUMISE: 4, DATE_GARDEE: 5, A_JOUR: 5}
         rows.sort(key=lambda r: (ordre.get(GRAVITE[r.EtatTri], 5), r.Niveau, r.Num))
         fenetre(chemins, docs[0], rows).ShowDialog()
 
