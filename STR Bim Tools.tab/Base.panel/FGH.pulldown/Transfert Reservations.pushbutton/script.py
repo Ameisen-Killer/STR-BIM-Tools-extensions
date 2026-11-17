@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "3.4.0"
+SCRIPT_VERSION = "3.5.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Reservations RES vs STR"
 # =============================================================================
@@ -158,6 +158,9 @@ HDR_NIVEAU      = u"Niveau"
 HDR_DEMANDEUR   = u"Demandeur"
 HDR_DATE_DEM    = u"Date dem."
 HDR_RES_DEM     = u"RES Dem."
+HDR_DEM_NOUV    = u"Nouv."
+HDR_DEM_MODIF   = u"Modif."
+HDR_DEM_SUPPR   = u"Suppr."
 HDR_RES_RESP    = u"Responsable"
 HDR_VAL_DATE    = u"Date VAL"
 HDR_VAL_COMMENT = u"Commentaire VAL"
@@ -208,7 +211,7 @@ MSG_VIEW3D_NOTPL  = u"Gabarit de vue '{}' introuvable.\nLa vue est créée sans 
 LBL_NO_LINK     = u"Aucune maquette liée dont le nom contient '{}' n'a été trouvée.\n\nVérifie que la maquette est chargée."
 LBL_NO_RES      = u"Aucune réservation (famille '{}') trouvée dans le lien."
 
-LBL_CSV_HEADER  = u"StatutVAL;StatutSTR;Numero;Famille;Niveau;Demandeur;DateDem;RESDem;Responsable;DateVal;CommentaireVAL;Detail"
+LBL_CSV_HEADER  = u"StatutVAL;StatutSTR;Numero;Famille;Niveau;Demandeur;DateDem;RESDem;DEM_Nouveau;DEM_Modifie;DEM_Supprime;Responsable;DateVal;CommentaireVAL;Detail"
 LBL_CSV_OK      = u"Export CSV réussi :\n{}"
 LBL_CSV_ERR     = u"Erreur export CSV :\n{}"
 
@@ -505,6 +508,11 @@ class ReservationRow(object):
         self.ResResp      = res_resp
         self._link_elem   = link_element
         self._host_elem   = host_element
+
+        # Cases oui/non de la maquette RES liee (lecture seule, affichage)
+        self.DemNouveau   = _get_param_int(link_element, PARAM_NOUVEAU) == 1 if link_element is not None else False
+        self.DemModifie   = _get_param_int(link_element, PARAM_MODIFIE) == 1 if link_element is not None else False
+        self.DemSupprime  = _get_param_int(link_element, PARAM_SUPPRIME) == 1 if link_element is not None else False
 
         # Cles de tri chronologique pour les colonnes dates (YYYYMMDD)
         self.DateDemSort  = _date_to_sort_key(date_dem)
@@ -1800,6 +1808,10 @@ XAML = """
         <DataGridTextColumn Header="Demandeur"   Binding="{Binding Demandeur}"  Width="85"  IsReadOnly="True"/>
         <DataGridTextColumn Header="DateDem"     Binding="{Binding DateDem}"    Width="80"  IsReadOnly="True" SortMemberPath="DateDemSort"/>
         <DataGridTextColumn Header="RESDem"      Binding="{Binding ResDem}"     Width="80"  IsReadOnly="True"/>
+        <!-- Cases oui/non PVA_RES_DEM_* de la maquette RES (lecture seule) -->
+        <DataGridCheckBoxColumn Header="DemNouv"  Binding="{Binding DemNouveau, Mode=OneWay}"  Width="50" IsReadOnly="True" SortMemberPath="DemNouveau"/>
+        <DataGridCheckBoxColumn Header="DemModif" Binding="{Binding DemModifie, Mode=OneWay}"  Width="52" IsReadOnly="True" SortMemberPath="DemModifie"/>
+        <DataGridCheckBoxColumn Header="DemSuppr" Binding="{Binding DemSupprime, Mode=OneWay}" Width="52" IsReadOnly="True" SortMemberPath="DemSupprime"/>
         <DataGridTextColumn Header="Responsable" Binding="{Binding ResResp}"    Width="90"  IsReadOnly="True"/>
         <DataGridTextColumn Header="Detail"      Binding="{Binding Detail}"     Width="*"   IsReadOnly="True"/>
       </DataGrid.Columns>
@@ -1842,7 +1854,8 @@ COLUMN_HEADERS = [
     HDR_SEL,
     HDR_VAL_STATUT, HDR_VAL_DATE, HDR_VAL_COMMENT,
     HDR_STATUT, HDR_NUM, HDR_FAMILLE, HDR_NIVEAU,
-    HDR_DEMANDEUR, HDR_DATE_DEM, HDR_RES_DEM, HDR_RES_RESP,
+    HDR_DEMANDEUR, HDR_DATE_DEM, HDR_RES_DEM,
+    HDR_DEM_NOUV, HDR_DEM_MODIF, HDR_DEM_SUPPR, HDR_RES_RESP,
     HDR_DETAIL
 ]
 
@@ -2285,10 +2298,14 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
         try:
             lines = [LBL_CSV_HEADER]
             for r in export_rows:
-                lines.append(u"{};{};{};{};{};{};{};{};{};{};{};{}".format(
+                lines.append(u"{};{};{};{};{};{};{};{};{};{};{};{};{};{};{}".format(
                     r.ValStatut, r.Statut, r.Num, r.Famille, r.Niveau,
                     r.Demandeur, r.DateDem,
-                    r.ResDem, r.ResResp,
+                    r.ResDem,
+                    u"Oui" if r.DemNouveau else u"Non",
+                    u"Oui" if r.DemModifie else u"Non",
+                    u"Oui" if r.DemSupprime else u"Non",
+                    r.ResResp,
                     r.ValDate, r.ValComment,
                     r.Detail.replace(";", " /")
                 ))
