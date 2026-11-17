@@ -210,6 +210,9 @@ Dans l'ordre d'affichage : le groupe validation (VAL, issu du lien SPV) d'abord,
 | **Demandeur** | `PVA_RES_DEM_Demandeur` | Corps d'état demandeur |
 | **Date dem.** | `PVA_RES_DEM_Date` | Date de la demande — tri chronologique |
 | **RES Dem.** | `RES_Demandeur` | Responsable côté demandeur |
+| **Nouv.** | `PVA_RES_DEM_Nouveau` | Case cochée si la maquette RES marque la réservation comme nouvelle (lecture seule) |
+| **Modif.** | `PVA_RES_DEM_Modifie` | Case cochée si la maquette RES la marque comme modifiée (lecture seule) |
+| **Suppr.** | `PVA_RES_DEM_Supprime` | Case cochée si la maquette RES la marque comme supprimée (lecture seule) — utile pour contrôler les suppressions |
 | **Responsable** | `RES_Responsable` | Responsable STR |
 | **Détail / Différences** | Calculé | Explication textuelle du statut |
 
