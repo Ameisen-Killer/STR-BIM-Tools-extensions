@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.8.0"
+SCRIPT_VERSION = "1.9.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "FGH - Export IFC RES"
 # =============================================================================
@@ -17,6 +17,8 @@ TOOL_NAME      = "FGH - Export IFC RES"
 # Lancer dans la maquette RES pour le premier, dans la maquette STR pour le
 # second. Une vue 3D temporaire filtre ce qui part : tout est annule apres
 # l'export, la maquette n'est pas modifiee. Voir lib/fgh_res.py.
+# 1.9.0 : deux cases filtrent les reservations selon PVA_RES_DEM_ResSTR
+#         (cochee / non cochee), compteurs mis a jour dans la fenetre.
 # =============================================================================
 
 import clr, traceback
@@ -263,10 +265,16 @@ try:
             tg.RollBack()
         return (chemin if os.path.isfile(chemin) else None), messages
 
-    def exporter_reservations(dossier, nom):
-        res = fgh_res.reservations(doc)
+    def filtrer_res_str(res, avec_coche, avec_non):
+        """Garde les reservations selon PVA_RES_DEM_ResSTR (cochee / non cochee)."""
+        return [e for e in res if (avec_coche if fgh_res.res_str(e) else avec_non)]
+
+    def exporter_reservations(dossier, nom, avec_coche=True, avec_non=True):
+        tout = fgh_res.reservations(doc)
+        res = filtrer_res_str(tout, avec_coche, avec_non)
+        n_filtre = len(tout) - len(res)
         if not res:
-            return u"Réservations : aucune famille FGH_RES* dans cette maquette."
+            return u"Réservations : aucune famille FGH_RES* à exporter avec ce filtre."
         ids = set(fgh_res.id_int(e.Id) for e in res)
         cats = set(fgh_res.id_int(e.Category.Id) for e in res if e.Category is not None)
         def garder(e):
@@ -285,6 +293,9 @@ try:
         n_sup = len(fgh_res.reservations(doc, avec_supprimees=True)) - len(res)
         if n_sup:
             txt += u"\n   {} supprimée(s) ({} coché) non exportée(s)".format(n_sup, fgh_res.SUPPRIME_PARAM)
+        if n_filtre:
+            txt += u"\n   {} écartée(s) par le filtre {} ({})".format(
+                n_filtre, fgh_res.RESSTR_PARAM, u"coché seulement" if avec_coche else u"non coché seulement")
         if absents:
             par_id = dict((u"{}".format(fgh_res.id_int(e.Id)), e) for e in res)
             def libelle(eid):
@@ -339,8 +350,12 @@ try:
     # --- Fenetre ------------------------------------------------------------------
     def fenetre():
         prefs = lire_prefs()
-        n_res = len(fgh_res.reservations(doc))
+        tout_res = fgh_res.reservations(doc)
+        n_res = len(tout_res)
         n_sup = len(fgh_res.reservations(doc, avec_supprimees=True)) - n_res
+        n_coche = sum(1 for e in tout_res if fgh_res.res_str(e))
+        n_non = n_res - n_coche
+        filtre = prefs.get(u"filtre_res_str") or {}
         n_str = len(elements_structure())
         # les reservations ne partent que de la maquette RES : depuis la STR, ce seraient
         # les copies deja integrees, sans les nouvelles demandes
@@ -364,19 +379,34 @@ try:
         Grid.SetRow(corps, 1); root.Children.Add(corps)
         corps.Children.Add(str_ui.section_hdr(u"Fichiers à créer pour str-bim-tools.com/fgh/"))
         gb = str_ui.group_box(); sp = StackPanel(); gb.Child = sp; corps.Children.Add(gb)
-        if est_res:
-            txt_res = u"Réservations FGH_RES de cette maquette ({}{})".format(
-                n_res, u", {} supprimée(s) écartée(s)".format(n_sup) if n_sup else u"")
-        else:
-            txt_res = u"Réservations : seulement depuis la maquette RES ({}…)".format(fgh_res.MAQUETTE_RES_PREFIXE)
-        cb_res = str_ui.checkbox(sans_raccourci(txt_res), est_res and n_res > 0,
+        cb_res = str_ui.checkbox(u"", est_res and n_res > 0,
             u"À lancer dans la maquette RES : c'est elle que l'ingénieur valide.")
         cb_res.IsEnabled = est_res and n_res > 0
+        # filtre PVA_RES_DEM_ResSTR : les deux cases cochees = toutes les reservations
+        cb_coche = str_ui.checkbox(sans_raccourci(u"avec {} coché ({})".format(fgh_res.RESSTR_PARAM, n_coche)),
+            filtre.get(u"coche", True), u"Exporte les réservations dont ce paramètre est coché.")
+        cb_non = str_ui.checkbox(sans_raccourci(u"avec {} non coché ({})".format(fgh_res.RESSTR_PARAM, n_non)),
+            filtre.get(u"non", True), u"Exporte les réservations dont ce paramètre n'est pas coché.")
+        for c in (cb_coche, cb_non):
+            c.Margin = Thickness(22, 1, 0, 1)
+        def a_exporter():
+            return (n_coche if cb_coche.IsChecked else 0) + (n_non if cb_non.IsChecked else 0)
+        def maj_libelle(s=None, e=None):
+            if est_res:
+                n = a_exporter()
+                txt = u"Réservations FGH_RES de cette maquette ({}{}{})".format(
+                    n, u" sur {}".format(n_res) if n != n_res else u"",
+                    u", {} supprimée(s) écartée(s)".format(n_sup) if n_sup else u"")
+            else:
+                txt = u"Réservations : seulement depuis la maquette RES ({}…)".format(fgh_res.MAQUETTE_RES_PREFIXE)
+            cb_res.Content = sans_raccourci(txt)
+        maj_libelle()
         cb_str = str_ui.checkbox(u"Structure light de cette maquette ({} éléments porteurs)".format(
             n_str), n_str > 0 and not est_res,
             u"À lancer dans la maquette STR : murs, dalles, poteaux, poutres, fondations, escaliers.")
         cb_str.IsEnabled = n_str > 0
-        sp.Children.Add(cb_res); sp.Children.Add(cb_str)
+        sp.Children.Add(cb_res); sp.Children.Add(cb_coche); sp.Children.Add(cb_non)
+        sp.Children.Add(cb_str)
 
         # fichiers de sortie : « Enregistrer sous… » pour chacun (dossier + nom),
         # proposes d'apres la maquette, memorises par maquette
@@ -409,8 +439,12 @@ try:
             noms_doc.get(u"str") or os.path.join(dos_def, radical(u"STR_light") + u".ifc"))
         def activer(s=None, e=None):
             tb_res.IsEnabled = b_res.IsEnabled = bool(cb_res.IsChecked)
+            cb_coche.IsEnabled = cb_non.IsEnabled = bool(cb_res.IsChecked)
             tb_str.IsEnabled = b_str.IsEnabled = bool(cb_str.IsChecked)
+            maj_libelle()
         cb_res.Checked += activer; cb_res.Unchecked += activer
+        cb_coche.Checked += activer; cb_coche.Unchecked += activer
+        cb_non.Checked += activer; cb_non.Unchecked += activer
         cb_str.Checked += activer; cb_str.Unchecked += activer
         activer()
 
@@ -445,6 +479,11 @@ try:
                 nom = nom_fichier(os.path.basename(ch), defaut)
                 tb.Text = os.path.join(dos, nom + u".ifc")
                 return dos, nom
+            if cb_res.IsChecked and a_exporter() == 0:
+                MessageBox.Show(u"Aucune réservation avec ce filtre {} : coche au moins une "
+                                u"des deux cases.".format(fgh_res.RESSTR_PARAM), TOOL_NAME,
+                                MessageBoxButton.OK, MessageBoxImage.Warning)
+                return
             c_res = cible(tb_res, radical(u"RES")) if cb_res.IsChecked else None
             c_str = cible(tb_str, radical(u"STR_light")) if cb_str.IsChecked else None
             if (cb_res.IsChecked and c_res is None) or (cb_str.IsChecked and c_str is None):
@@ -459,6 +498,7 @@ try:
             prefs[u"dossier"] = (c_res or c_str)[0]
             noms[doc.Title] = {u"res": tb_res.Text, u"str": tb_str.Text}
             prefs[u"fichiers"] = noms
+            prefs[u"filtre_res_str"] = {u"coche": bool(cb_coche.IsChecked), u"non": bool(cb_non.IsChecked)}
             ecrire_prefs(prefs)
             lignes = []
             win.Cursor = SW.Input.Cursors.Wait
@@ -471,7 +511,8 @@ try:
                 prog.demarrer((4 if cb_res.IsChecked else 0) + (4 if cb_str.IsChecked else 0),
                               u"Préparation…")
                 if cb_res.IsChecked:
-                    lignes.append(exporter_reservations(*c_res))
+                    lignes.append(exporter_reservations(c_res[0], c_res[1],
+                                                        bool(cb_coche.IsChecked), bool(cb_non.IsChecked)))
                 if cb_str.IsChecked:
                     lignes.append(exporter_structure(*c_str))
             except Exception as ex:

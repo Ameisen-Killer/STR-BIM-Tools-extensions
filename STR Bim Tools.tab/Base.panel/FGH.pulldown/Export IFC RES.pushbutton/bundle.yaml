@@ -1,5 +1,5 @@
 title: "Export\nIFC RES"
-tooltip: "Exporte les IFC des réservations et de la structure pour la validation web. Emplacement et nom de chaque fichier choisis par « Enregistrer sous… », contrôle du nombre de réservations exportées."
+tooltip: "Exporte les IFC des réservations et de la structure pour la validation web, avec un filtre selon PVA_RES_DEM_ResSTR."
 author: Tony VARIN
-version: 1.8.0
+version: 1.9.0
 min_revit_ver: 2024

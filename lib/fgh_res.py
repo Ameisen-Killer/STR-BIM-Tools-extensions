@@ -42,6 +42,7 @@ FAMILY_PREFIX = u"FGH_RES"
 MAQUETTE_RES_PREFIXE = u"FGH_RES_SPV"
 ADN_PARAM = u"CONTROL_NE_PAS_TOUCHER"
 SUPPRIME_PARAM = u"PVA_RES_DEM_Supprime"
+RESSTR_PARAM = u"PVA_RES_DEM_ResSTR"
 PARAM_NUM = u"PVA_RES_DEM_NumReservation"
 
 # Parametres que la page web a le droit de changer (nom -> libelle)
@@ -158,6 +159,20 @@ def supprimee(el):
         return p is not None and p.HasValue and p.StorageType == StorageType.Integer and p.AsInteger() == 1
     except Exception:
         return False
+
+
+def res_str(el):
+    """PVA_RES_DEM_ResSTR coche (oui/non) sur l'instance, a defaut sur son type."""
+    for cible in (el, None):
+        try:
+            if cible is None:
+                cible = el.Document.GetElement(el.GetTypeId())
+            p = cible.LookupParameter(RESSTR_PARAM) if cible is not None else None
+            if p is not None and p.StorageType == StorageType.Integer:
+                return p.HasValue and p.AsInteger() == 1
+        except Exception:
+            pass
+    return False
 
 
 def reservations(doc, avec_supprimees=False):
