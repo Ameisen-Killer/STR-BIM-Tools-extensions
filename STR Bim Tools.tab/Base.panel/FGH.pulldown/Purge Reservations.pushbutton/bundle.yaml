@@ -1,0 +1,5 @@
+title: "Purge\nReservations"
+tooltip: "Supprime les réservations FGH_RES marquées SUPPRIMEE."
+author: Tony VARIN
+version: 1.0.0
+min_revit_ver: 2024

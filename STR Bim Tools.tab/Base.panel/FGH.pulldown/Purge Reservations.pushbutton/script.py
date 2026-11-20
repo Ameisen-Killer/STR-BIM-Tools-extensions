@@ -6,8 +6,7 @@ SCRIPT_VERSION = "1.0.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = u"Purge Reservations Supprimees"
 # =============================================================================
-__title__ = "Purge\nReservations"
-__doc__ = "Supprime les réservations FGH_RES marquées SUPPRIMEE."
+# Titre du bouton, tooltip et version : voir bundle.yaml (pas de __title__ ici)
 
 # =============================================================================
 # IMPORTS — tous en tete, obligatoire IronPython
