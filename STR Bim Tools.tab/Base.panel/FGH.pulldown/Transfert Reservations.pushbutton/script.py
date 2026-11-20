@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "3.5.0"
+SCRIPT_VERSION = "3.6.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Reservations RES vs STR"
 # =============================================================================
@@ -131,6 +131,7 @@ STATUT_DIFF     = "DIFFERENT"
 STATUT_STR_SEUL = "STR_SEUL"
 STATUT_OK       = "OK"
 STATUT_INVALID  = "INVALIDE"   # Cas D : valide au 1er round, refuse/vide au 2eme
+STATUT_VAL      = "STATUT VAL" # Cas E : seule la validation (statut, date, commentaire) differe
 
 # =============================================================================
 # LABELS LOCALISES — accents ecrits directement en UTF-8 (encoding declare ligne 1)
@@ -142,6 +143,7 @@ LBL_ABSENT_STAT = u"✖ Absentes : {}"
 LBL_DIFF_STAT   = u"⚠ Différentes : {}"
 LBL_INVALID_STAT = u"⛔ Invalidées : {}"
 LBL_OK_STAT     = u"✔ OK : {}"
+LBL_VAL_STAT    = u"↻ Statut VAL à reprendre : {}"
 LBL_STR_STAT    = u"STR seul : {}"
 LBL_TOTAL_STAT  = u"Total lien : {}  |  Total hôte : {}"
 
@@ -220,9 +222,12 @@ MSG_CONFIRM_SYNC = (
     u"  • Cas A - Nouveaux à copier            : {}\n"
     u"  • Cas B - Modifiés à mettre à jour      : {}\n"
     u"  • Cas C - à marquer supprimés          : {}\n"
-    u"  • Cas D - Validation retirée/refusée  : {}\n\n"
+    u"  • Cas D - Validation retirée/refusée  : {}\n"
+    u"  • Cas E - Statut VAL à reprendre        : {}\n\n"
     u"Seules les réservations VALID sont copiées.\n"
     u"Les Cas D seront marqués Supprimé dans la STR.\n"
+    u"Les Cas E reçoivent le statut, la date et le commentaire de validation "
+    u"de la maquette RES, sans copie ni déplacement.\n"
     u"Confirmer ?"
 )
 MSG_SYNC_RESULT = (
@@ -231,11 +236,12 @@ MSG_SYNC_RESULT = (
     u"  Cas B - Modifiés copiés              : {}\n"
     u"  Cas B - Anciennes supprimées         : {}\n"
     u"  Cas C - Marqués supprimés            : {}\n"
-    u"  Cas D - Invalides marqués supprimés  : {}\n\n"
+    u"  Cas D - Invalides marqués supprimés  : {}\n"
+    u"  Cas E - Statuts VAL repris           : {}\n\n"
     u"Total copiés : {}  |  Total marqués : {}"
 )
 MSG_SYNC_ERR    = u"Erreur lors de la synchronisation :\n\n{}"
-MSG_NOTHING     = u"Aucun élément à synchroniser dans la sélection (ABSENT, DIFFERENT ou INVALIDE attendus)."
+MSG_NOTHING     = u"Aucun élément à synchroniser dans la sélection (ABSENT, DIFFERENT, INVALIDE ou STATUT VAL attendus)."
 MSG_WORKSET_NOT_FOUND = (
     u"⚠ AVERTISSEMENT : le sous-projet '{}' est introuvable dans la maquette.\n"
     u"Les éléments copiés sont restés dans le sous-projet actif.\n"
@@ -411,6 +417,25 @@ def _diff_detail(snap_host, snap_link):
     return u" | ".join(parts)
 
 
+def _val_diff_detail(e_host, e_link):
+    """
+    Differences de validation entre la STR et le lien : statut, date, commentaire.
+    La validation se decide dans la maquette RES ; la copie STR la recoit a la
+    synchronisation puis n'est plus relue. Sans ce controle, une reservation
+    repassee de VALIDE a « A REVOIR » dans la RES restait VALIDE dans la STR.
+    Retourne u"" si les trois parametres sont identiques.
+    """
+    parts = []
+    for pname, label in ((PARAM_VAL_STATUT,  u"Statut VAL"),
+                         (PARAM_VAL_DATE,    u"Date VAL"),
+                         (PARAM_VAL_COMMENT, u"Commentaire VAL")):
+        v_h = (_get_param_str(e_host, pname) or u"").strip()
+        v_l = (_get_param_str(e_link, pname) or u"").strip()
+        if v_h != v_l:
+            parts.append(u"{}: STR=[{}] / SPV=[{}]".format(label, v_h, v_l))
+    return u" | ".join(parts)
+
+
 def _get_family_name(element):
     try:
         return element.Symbol.Family.Name
@@ -493,7 +518,7 @@ class ReservationRow(object):
                  demandeur, date_dem,
                  val_statut, val_date, val_comment,
                  res_dem, res_resp,
-                 link_element=None, host_element=None):
+                 link_element=None, host_element=None, val_diff=u""):
         self.Num          = num
         self.Famille      = famille
         self.Niveau       = niveau
@@ -508,6 +533,8 @@ class ReservationRow(object):
         self.ResResp      = res_resp
         self._link_elem   = link_element
         self._host_elem   = host_element
+        # Ecart de validation STR / RES (texte), vide si identique
+        self.ValDiff      = val_diff or u""
 
         # Cases oui/non de la maquette RES liee (lecture seule, affichage)
         self.DemNouveau   = _get_param_int(link_element, PARAM_NOUVEAU) == 1 if link_element is not None else False
@@ -519,15 +546,19 @@ class ReservationRow(object):
         self.ValDateSort  = _date_to_sort_key(val_date)
 
         # Ligne actionnable = peut etre synchronisee
-        self.IsSelectable = statut in (STATUT_ABSENT, STATUT_DIFF, STATUT_INVALID)
+        self.IsSelectable = statut in (STATUT_ABSENT, STATUT_DIFF, STATUT_INVALID,
+                                       STATUT_VAL)
 
         # Cochee par defaut uniquement si elle sera reellement synchronisee :
         # - Cas D (INVALIDE) : toujours coche, independant du statut VAL
         # - Cas A/B/C (ABSENT ou DIFFERENT) : seulement si VAL contient VALID
-        if statut == STATUT_INVALID:
+        # - Cas E (STATUT VAL, ou DIFFERENT non valide dont la validation a change) :
+        #   coche, la reprise du statut ne copie ni ne deplace rien
+        if statut in (STATUT_INVALID, STATUT_VAL):
             self.IsSelected = True
         elif statut in (STATUT_ABSENT, STATUT_DIFF):
-            self.IsSelected = _is_valid_text(val_statut)
+            self.IsSelected = _is_valid_text(val_statut) or \
+                (statut == STATUT_DIFF and bool(self.ValDiff))
         else:
             self.IsSelected = False
 
@@ -541,6 +572,8 @@ class ReservationRow(object):
         # Couleur de ligne
         if statut == STATUT_INVALID:
             self.RowBg = "#FFD9A0"
+        elif statut == STATUT_VAL:
+            self.RowBg = "#D6EAF8"
         elif val_statut == VAL_VALIDE:
             self.RowBg = "#DFF0D8"
         elif val_statut == VAL_REFUSE:
@@ -815,8 +848,11 @@ def compare_reservations(host_elems, link_elems):
                 snap_link = _build_snapshot(e_link)
                 snap_host = _build_snapshot(e_host)
                 detail    = _diff_detail(snap_host, snap_link)
+                val_diff  = _val_diff_detail(e_host, e_link)
                 if detail:
                     nb_diff += 1
+                    if val_diff:
+                        detail = u"{} | {}".format(detail, val_diff)
                     rows.append(ReservationRow(
                         num=num,
                         famille=_get_family_name(e_link),
@@ -828,20 +864,25 @@ def compare_reservations(host_elems, link_elems):
                         val_statut=val_statut, val_date=val_date,
                         val_comment=val_comment, res_dem=res_dem, res_resp=res_resp,
                         link_element=e_link, host_element=e_host,
+                        val_diff=val_diff,
                     ))
                 else:
-                    nb_ok += 1
+                    # Memes parametres de demande : OK, sauf si la validation a
+                    # change dans la RES depuis la copie (Cas E)
+                    if not val_diff:
+                        nb_ok += 1
                     rows.append(ReservationRow(
                         num=num,
                         famille=_get_family_name(e_link),
                         niveau=_get_param_value_str(e_link, PARAM_NIVEAU),
-                        statut=STATUT_OK,
-                        detail="",
+                        statut=STATUT_VAL if val_diff else STATUT_OK,
+                        detail=val_diff,
                         demandeur=_get_param_str(e_link, PARAM_DEMANDEUR) or "",
                         date_dem=_get_param_str(e_link, PARAM_DATE) or "",
                         val_statut=val_statut, val_date=val_date,
                         val_comment=val_comment, res_dem=res_dem, res_resp=res_resp,
                         link_element=e_link, host_element=e_host,
+                        val_diff=val_diff,
                     ))
 
     # Elements STR sans correspondance dans le lien (ADN absent du lien, ou
@@ -866,8 +907,9 @@ def compare_reservations(host_elems, link_elems):
         STATUT_INVALID:  0,
         STATUT_ABSENT:   1,
         STATUT_DIFF:     2,
-        STATUT_STR_SEUL: 3,
-        STATUT_OK:       4,
+        STATUT_VAL:      3,
+        STATUT_STR_SEUL: 4,
+        STATUT_OK:       5,
     }
     rows.sort(key=lambda r: (
         0 if r.Statut == STATUT_INVALID else 1,   # INVALIDE toujours en premier
@@ -893,6 +935,7 @@ CAS_A = "A"   # nouveau a copier
 CAS_B = "B"   # modifie a mettre a jour (copie + ancien marque supprime)
 CAS_C = "C"   # marquer local supprime (annulation demandeur)
 CAS_D = "D"   # validation retiree/refusee apres integration
+CAS_E = "E"   # reprise du statut, de la date et du commentaire de validation
 CAS_NONE = None   # ligne non actionnable
 
 
@@ -900,7 +943,7 @@ def _classify_row(row):
     """
     Determine dans quel cas A/B/C/D tombe une ligne de reservation.
     Source unique de verite pour la logique de synchronisation.
-    Retourne CAS_A, CAS_B, CAS_C, CAS_D ou CAS_NONE.
+    Retourne CAS_A, CAS_B, CAS_C, CAS_D, CAS_E ou CAS_NONE.
     """
     e_link = row._link_elem
     e_host = row._host_elem
@@ -909,12 +952,22 @@ def _classify_row(row):
     if row.Statut == STATUT_INVALID and e_host is not None:
         return CAS_D
 
+    # Cas E : meme reservation des deux cotes, seule la validation a change
+    if row.Statut == STATUT_VAL:
+        if e_host is not None and e_link is not None:
+            return CAS_E
+        return CAS_NONE
+
     # Cas A/B/C necessitent ABSENT ou DIFFERENT + lien valide
     if row.Statut not in (STATUT_ABSENT, STATUT_DIFF):
         return CAS_NONE
     if e_link is None:
         return CAS_NONE
     if not _is_statut_valide(e_link):
+        # DIFFERENT non valide : ni copie ni remplacement, mais la STR ne doit
+        # pas garder un statut que la RES n'a plus (VALIDE devenu A REVOIR)
+        if row.Statut == STATUT_DIFF and e_host is not None and row.ValDiff:
+            return CAS_E
         return CAS_NONE
 
     supprime_lien = _get_param_int(e_link, PARAM_SUPPRIME)
@@ -1415,6 +1468,39 @@ def _mark_as_deleted(elements):
     return count
 
 
+def _update_val_params(pairs):
+    """
+    Cas E : reporte statut, date et commentaire de validation du lien vers
+    l'element STR. Rien d'autre n'est touche : ni geometrie, ni parametres de
+    demande, ni epinglage. pairs = [(element STR, element du lien)].
+    Retourne le nombre d'elements dont au moins un parametre a ete ecrit.
+    """
+    count = 0
+    for e_host, e_link in pairs:
+        ecrit = False
+        for pname in (PARAM_VAL_STATUT, PARAM_VAL_DATE, PARAM_VAL_COMMENT):
+            try:
+                p_src = e_link.LookupParameter(pname)
+                p_dst = e_host.LookupParameter(pname)
+                if not p_src or not p_dst or p_dst.IsReadOnly:
+                    continue
+                st = p_src.StorageType
+                if st == StorageType.String:
+                    p_dst.Set(p_src.AsString() or "")
+                elif st == StorageType.Double:
+                    p_dst.Set(p_src.AsDouble())
+                elif st == StorageType.Integer:
+                    p_dst.Set(p_src.AsInteger())
+                else:
+                    continue
+                ecrit = True
+            except Exception:
+                pass
+        if ecrit:
+            count += 1
+    return count
+
+
 def _pin_elements(elements):
     """Epingle les elements pour empecher un deplacement accidentel."""
     for e in elements:
@@ -1426,17 +1512,20 @@ def _pin_elements(elements):
 
 def synchronize_reservations(rows, link_instance):
     """
-    Execute la synchronisation Cas A / B / C / D.
+    Execute la synchronisation Cas A / B / C / D / E.
     Cas D : element present en local + validation retiree/refusee dans le lien
             → marquer local Supprime=1 + vider PVA_RES_VAL_Statut
+    Cas E : meme reservation des deux cotes, validation differente
+            → statut, date et commentaire VAL repris du lien
     Retourne (nb_cas_a, nb_cas_b_copies, nb_cas_b_marks, nb_cas_c, nb_cas_d,
-              workset_not_found, erreur_str)
+              nb_cas_e, workset_not_found, erreur_str)
     """
     cas_a_sources    = []
     cas_b_sources    = []
     cas_b_old_locals = []
     cas_c_locals     = []
     cas_d_locals     = []
+    cas_e_pairs      = []
 
     for row in rows:
         cas = _classify_row(row)
@@ -1449,6 +1538,8 @@ def synchronize_reservations(rows, link_instance):
             cas_c_locals.append(row._host_elem)
         elif cas == CAS_D:
             cas_d_locals.append(row._host_elem)
+        elif cas == CAS_E:
+            cas_e_pairs.append((row._host_elem, row._link_elem))
 
     _reset_remap_report()
 
@@ -1457,6 +1548,7 @@ def synchronize_reservations(rows, link_instance):
     nb_cas_b_marks  = 0
     nb_cas_c        = 0
     nb_cas_d        = 0
+    nb_cas_e        = 0
 
     workset_id         = _find_workset_id(TARGET_WORKSET_NAME)
     workset_not_found  = (workset_id is None) and (len(cas_a_sources) + len(cas_b_sources) > 0)
@@ -1488,12 +1580,16 @@ def synchronize_reservations(rows, link_instance):
             with revit.Transaction(u"STR - Sync Reservations Cas D"):
                 nb_cas_d = _mark_as_deleted(cas_d_locals)
 
+        if cas_e_pairs:
+            with revit.Transaction(u"STR - Sync Reservations Cas E"):
+                nb_cas_e = _update_val_params(cas_e_pairs)
+
     except Exception:
         return (nb_cas_a, nb_cas_b_copies, nb_cas_b_marks, nb_cas_c, nb_cas_d,
-                workset_not_found, traceback.format_exc())
+                nb_cas_e, workset_not_found, traceback.format_exc())
 
     return (nb_cas_a, nb_cas_b_copies, nb_cas_b_marks, nb_cas_c, nb_cas_d,
-            workset_not_found, None)
+            nb_cas_e, workset_not_found, None)
 
 
 # =============================================================================
@@ -1703,6 +1799,9 @@ XAML = """
         </Border>
         <Border Background="#FFD9A0" CornerRadius="4" Padding="8,3" Margin="0,3,8,3">
           <TextBlock x:Name="lbl_invalid" FontSize="12" FontWeight="SemiBold"/>
+        </Border>
+        <Border Background="#D6EAF8" CornerRadius="4" Padding="8,3" Margin="0,3,8,3">
+          <TextBlock x:Name="lbl_val_stat" FontSize="12" FontWeight="SemiBold"/>
         </Border>
         <Border Background="#DFF0D8" CornerRadius="4" Padding="8,3" Margin="0,3,8,3">
           <TextBlock x:Name="lbl_ok" FontSize="12" FontWeight="SemiBold"/>
@@ -1964,7 +2063,7 @@ def _populate_statut_combos(window, state):
     cb_stat = window.FindName("cb_statut")
     counts  = _counts_by(rows, lambda r: r.Statut)
     order   = {STATUT_INVALID: 0, STATUT_ABSENT: 1, STATUT_DIFF: 2,
-               STATUT_STR_SEUL: 3, STATUT_OK: 4}
+               STATUT_VAL: 3, STATUT_STR_SEUL: 4, STATUT_OK: 5}
     keys    = sorted(counts.keys(), key=lambda k: (order.get(k, 9), k))
     entries = [(None, LBL_F_ALL.format(len(rows)))]
     for k in keys:
@@ -2057,6 +2156,8 @@ def _reload_grid(window, state, link_name):
     window.FindName("lbl_absent").Text   = LBL_ABSENT_STAT.format(state["nb_absent"])
     window.FindName("lbl_diff").Text     = LBL_DIFF_STAT.format(state["nb_diff"])
     window.FindName("lbl_invalid").Text  = LBL_INVALID_STAT.format(state["nb_invalid"])
+    window.FindName("lbl_val_stat").Text = LBL_VAL_STAT.format(
+        sum(1 for r in rows if r.Statut == STATUT_VAL))
     window.FindName("lbl_ok").Text       = LBL_OK_STAT.format(state["nb_ok"])
     window.FindName("lbl_str_seul").Text = LBL_STR_STAT.format(state["nb_str_seul"])
     window.FindName("lbl_total").Text    = LBL_TOTAL_STAT.format(
@@ -2212,7 +2313,7 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
             return
 
         # Preview : utilise la meme fonction de classification que la synchro reelle
-        nb_a = nb_b = nb_c = nb_d = 0
+        nb_a = nb_b = nb_c = nb_d = nb_e = 0
         for row in selected:
             cas = _classify_row(row)
             if cas == CAS_A:
@@ -2223,8 +2324,10 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
                 nb_c += 1
             elif cas == CAS_D:
                 nb_d += 1
+            elif cas == CAS_E:
+                nb_e += 1
 
-        total_preview = nb_a + nb_b + nb_c + nb_d
+        total_preview = nb_a + nb_b + nb_c + nb_d + nb_e
         if total_preview == 0:
             forms.alert(
                 u"Aucun élément à traiter parmi la sélection.",
@@ -2233,14 +2336,14 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
             return
 
         confirmed = forms.alert(
-            MSG_CONFIRM_SYNC.format(total_preview, nb_a, nb_b, nb_c, nb_d),
+            MSG_CONFIRM_SYNC.format(total_preview, nb_a, nb_b, nb_c, nb_d, nb_e),
             title="Confirmer la synchronisation",
             yes=True, no=True
         )
         if not confirmed:
             return
 
-        r_a, r_b_cp, r_b_mk, r_c, r_d, ws_not_found, err = synchronize_reservations(
+        r_a, r_b_cp, r_b_mk, r_c, r_d, r_e, ws_not_found, err = synchronize_reservations(
             selected, link_instance
         )
 
@@ -2250,7 +2353,7 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
 
         # Construire le message de resultat avec avertissement eventuel
         result_msg = MSG_SYNC_RESULT.format(
-            r_a, r_b_cp, r_b_mk, r_c, r_d,
+            r_a, r_b_cp, r_b_mk, r_c, r_d, r_e,
             r_a + r_b_cp, r_b_mk + r_c + r_d
         )
         if ws_not_found:
