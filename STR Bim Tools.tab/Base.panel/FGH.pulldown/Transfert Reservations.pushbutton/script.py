@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "3.8.0"
+SCRIPT_VERSION = "3.8.1"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Reservations RES vs STR"
 # =============================================================================
@@ -2329,6 +2329,36 @@ COLUMN_HEADERS = [
 
 
 
+def _prefs_chemin():
+    return os.path.join(os.path.dirname(__file__), "prefs.json")
+
+
+def _prefs_lire():
+    """Preferences du poste (prefs.json a cote du script) ; {} si absentes ou illisibles."""
+    try:
+        import json
+        with io.open(_prefs_chemin(), 'r', encoding='utf-8') as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _prefs_ecrire(valeurs):
+    """Complete prefs.json ; un echec d'ecriture ne bloque jamais l'outil."""
+    try:
+        import json
+        d = _prefs_lire()
+        d.update(valeurs)
+        txt = json.dumps(d, indent=2)
+        if not isinstance(txt, type(u"")):
+            txt = txt.decode('utf-8')
+        with io.open(_prefs_chemin(), 'w', encoding='utf-8') as f:
+            f.write(txt)
+    except Exception:
+        pass
+
+
 def _count_val_statuts(rows):
     """Compte les VALIDE, REFUSE et INVALIDE parmi les rows."""
     nb_valide  = sum(1 for r in rows if r.ValStatut == VAL_VALIDE)
@@ -2906,10 +2936,27 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
         # Exporte ce qui est affiche (filtre applique), pas le jeu complet
         _v          = state.get("view")
         export_rows = state["rows"] if _v is None else _v
-        desktop     = os.path.join(os.path.expanduser("~"), "Desktop")
         stamp       = System.DateTime.Now.ToString("yyyyMMdd_HHmm")
-        csv_path    = os.path.join(
-            desktop, "STR_Reservations_Analyse_{}.csv".format(stamp))
+        # Emplacement demande a chaque export ; le dossier choisi est retenu
+        # sur le poste (prefs.json), le Bureau sert au premier export
+        try:
+            clr.AddReference("System.Windows.Forms")
+            from System.Windows.Forms import SaveFileDialog, DialogResult
+            dlg = SaveFileDialog()
+            dlg.Title    = "Exporter l'analyse des reservations"
+            dlg.Filter   = "Fichier CSV (*.csv)|*.csv"
+            dlg.FileName = "STR_Reservations_Analyse_{}.csv".format(stamp)
+            dossier = _prefs_lire().get("dossier_csv", u"")
+            if not dossier or not os.path.isdir(dossier):
+                dossier = os.path.join(os.path.expanduser("~"), "Desktop")
+            if os.path.isdir(dossier):
+                dlg.InitialDirectory = dossier
+            if dlg.ShowDialog() != DialogResult.OK or not dlg.FileName:
+                return
+            csv_path = dlg.FileName
+        except Exception as ex:
+            forms.alert(LBL_CSV_ERR.format(str(ex)), title="Erreur")
+            return
         try:
             lines = [LBL_CSV_HEADER]
             for r in export_rows:
@@ -2928,6 +2975,7 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
                 ))
             with io.open(csv_path, 'w', encoding='utf-8-sig') as f:
                 f.write(u"\n".join(lines))
+            _prefs_ecrire({"dossier_csv": os.path.dirname(csv_path)})
             forms.alert(
                 LBL_CSV_OK.format(csv_path) +
                 u"\n\n{} ligne(s) exportée(s) sur {}.".format(
