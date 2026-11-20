@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "3.6.0"
+SCRIPT_VERSION = "3.6.1"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Reservations RES vs STR"
 # =============================================================================
@@ -48,7 +48,7 @@ try:
     import re
 
     from System.Collections.ObjectModel import ObservableCollection
-    from System.Windows.Controls import ComboBoxItem
+    from System.Windows.Controls import ComboBoxItem, DataGridCell
 
     from pyrevit import revit, forms
     from Autodesk.Revit.DB import (
@@ -1871,7 +1871,7 @@ XAML = """
               GridLinesVisibility="Horizontal"
               BorderBrush="#C0D0E0" BorderThickness="1"
               HeadersVisibility="Column"
-              SelectionMode="Single"
+              SelectionMode="Extended"
               CanUserResizeColumns="True"
               CanUserSortColumns="True"
               FontSize="12"
@@ -2228,6 +2228,71 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
         _update_sel_count(window, state)
 
     dg.CurrentCellChanged += on_cell_changed
+
+    # -------------------------------------------------------------------------
+    # COCHE EN UN CLIC + SELECTION MULTIPLE (Ctrl / Maj, facon Windows)
+    # Une DataGridCheckBoxColumn demande deux clics : le premier selectionne la
+    # ligne, le second seulement entre en edition. On intercepte donc le clic
+    # sur la colonne des cases et on bascule la valeur nous-memes. Si la ligne
+    # cliquee fait partie d'une selection multiple, toute la selection suit.
+    # -------------------------------------------------------------------------
+    def _basculer(items, valeur):
+        for r in items:
+            if r.IsSelectable:
+                r.IsSelected = valeur
+        # Items.Refresh garde le tri, le defilement et la selection, a la
+        # difference d'un rechargement d'ItemsSource
+        try:
+            dg.Items.Refresh()
+        except Exception:
+            _refresh_view()
+            return
+        _update_sel_count(window, state)
+
+    def _cellule_sous_souris(source):
+        dep = source
+        for _ in range(40):
+            if dep is None or dep is dg:
+                return None
+            if isinstance(dep, DataGridCell):
+                return dep
+            try:
+                dep = System.Windows.Media.VisualTreeHelper.GetParent(dep)
+            except Exception:
+                return None
+        return None
+
+    def on_grid_click(s, e):
+        try:
+            cell = _cellule_sous_souris(e.OriginalSource)
+            if cell is None or cell.Column is None or cell.Column.DisplayIndex != 0:
+                return
+            item = cell.DataContext
+            if not hasattr(item, "IsSelectable"):
+                return
+            e.Handled = True          # ni edition, ni changement de selection
+            if not item.IsSelectable:
+                return
+            choisies = [r for r in dg.SelectedItems]
+            cibles = choisies if (len(choisies) > 1 and item in choisies) else [item]
+            _basculer(cibles, not item.IsSelected)
+        except Exception:
+            pass
+
+    def on_grid_key(s, e):
+        try:
+            if e.Key != System.Windows.Input.Key.Space:
+                return
+            choisies = [r for r in dg.SelectedItems if r.IsSelectable]
+            if not choisies:
+                return
+            e.Handled = True
+            _basculer(choisies, not choisies[0].IsSelected)
+        except Exception:
+            pass
+
+    dg.PreviewMouseLeftButtonDown += on_grid_click
+    dg.PreviewKeyDown             += on_grid_key
 
     # -------------------------------------------------------------------------
     # FILTRES : Statut VAL / Date VAL / Statut synchro / recherche libre
