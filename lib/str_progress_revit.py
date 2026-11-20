@@ -69,6 +69,11 @@ class SuiviProgressionRevit(object):
         self._intervalle = int(intervalle_ms)
         self._dernier_tic = 0
         self.messages = []
+        # Mesure des phases de l'export (voir debut_mesure / releve_phases).
+        self._phases = []
+        self._index_phases = {}
+        self._phase_courante = None
+        self._tic_phase = System.Environment.TickCount
 
     @property
     def branche(self):
@@ -99,24 +104,65 @@ class SuiviProgressionRevit(object):
             pass
         self._delegue = None
 
+    # ------------------------------------------------------------------
+    # Mesure des phases
+    # ------------------------------------------------------------------
+    # Revit nomme la phase de travail en cours dans args.Caption. En notant le
+    # moment ou ce libelle change, on sait ou part le temps d'un export. La
+    # mesure se fait sur les tics deja retenus par le garde-fou : elle n'ajoute
+    # aucun appel, et sa resolution est celle de l'intervalle (~0.15 s).
+    def debut_mesure(self):
+        """Remet la mesure a zero. A appeler juste avant l'export."""
+        self._phases = []
+        self._index_phases = {}
+        self._phase_courante = None
+        self._tic_phase = System.Environment.TickCount
+
+    def releve_phases(self):
+        """
+        [(libelle, secondes)] depuis debut_mesure, dans l'ordre d'apparition.
+        Une phase qui revient plusieurs fois est cumulee. Le temps passe sans
+        libelle (avant le premier tic, ou libelle vide) est compte a part.
+        """
+        self._clore_phase(System.Environment.TickCount)
+        return [(libelle, ms / 1000.0) for libelle, ms in self._phases]
+
+    def _clore_phase(self, tic):
+        duree = tic - self._tic_phase
+        self._tic_phase = tic
+        if duree <= 0:
+            return
+        libelle = self._phase_courante or u"(sans libelle de phase)"
+        rang = self._index_phases.get(libelle)
+        if rang is None:
+            self._index_phases[libelle] = len(self._phases)
+            self._phases.append([libelle, duree])
+        else:
+            self._phases[rang][1] += duree
+
     def _sur_progression(self, sender, args):
         # Premiere instruction : sortir sans rien lire dans le cas courant.
         # TickCount est une simple lecture d'entier, bien moins couteuse que la
         # lecture des proprietes de l'evenement et que l'appel a la cible.
+        # "0 <=" : TickCount repasse en negatif apres ~25 jours sans redemarrer
+        # le poste ; sans cette borne le garde-fou bloquerait alors tout.
         tic = System.Environment.TickCount
-        if tic - self._dernier_tic < self._intervalle:
+        if 0 <= tic - self._dernier_tic < self._intervalle:
             return
         self._dernier_tic = tic
         try:
+            try:
+                phase = args.Caption or None
+            except Exception:
+                phase = None
+            if phase != self._phase_courante:
+                self._clore_phase(tic)
+                self._phase_courante = phase
             bas = args.LowerRange
             haut = args.UpperRange
             if haut <= bas:
                 return
             fraction = float(args.Position - bas) / float(haut - bas)
-            try:
-                phase = args.Caption or None
-            except Exception:
-                phase = None
             self._cible.avancement(fraction, phase)
         except Exception:
             # Une exception qui remonte depuis un handler d'evenement pendant un

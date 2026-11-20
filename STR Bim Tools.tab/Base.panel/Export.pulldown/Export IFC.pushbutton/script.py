@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "3.6.2"
+SCRIPT_VERSION = "3.7.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Export IFC"
 # =============================================================================
@@ -66,6 +66,7 @@ try:
 
     import System
     import System.Diagnostics
+    import System.IO
     import System.Windows as SW
     import System.Windows.Controls as SWC
     from System.Windows import (MessageBox, MessageBoxButton, MessageBoxImage,
@@ -280,6 +281,77 @@ try:
         except Exception:
             pass
         return os.path.join(dossier, radical + extension)
+
+    # ======================================================================
+    # Ecriture locale puis deplacement
+    # ======================================================================
+    # L'exporteur ecrit l'IFC par petits blocs. Sur un dossier du serveur,
+    # chaque bloc traverse le reseau : sur un gros fichier c'est une part
+    # sensible de la duree. On fait donc ecrire l'exporteur dans un dossier
+    # temporaire du poste, puis on deplace le fichier fini en une seule copie.
+    def dossier_reseau(chemin):
+        """True si le dossier est sur un partage ou un lecteur reseau."""
+        try:
+            complet = System.IO.Path.GetFullPath(chemin)
+            if complet.startswith(u"\\\\"):
+                return True
+            racine = System.IO.Path.GetPathRoot(complet)
+            return (System.IO.DriveInfo(racine).DriveType
+                    == System.IO.DriveType.Network)
+        except Exception:
+            return False
+
+    def creer_dossier_local():
+        """(chemin, motif) - dossier temporaire neuf, propre a ce lot."""
+        try:
+            nom = u"STR_ExportIFC_{0}_{1}".format(
+                System.Diagnostics.Process.GetCurrentProcess().Id,
+                time.strftime("%Y%m%d_%H%M%S"))
+            chemin = os.path.join(System.IO.Path.GetTempPath(), nom)
+            if not os.path.isdir(chemin):
+                os.makedirs(chemin)
+            return chemin, u""
+        except Exception as ex:
+            return None, u"{0}".format(ex)
+
+    def deplacer_fichier(source, dossier_cible):
+        """
+        Deplace un fichier du dossier local vers le dossier de sortie et
+        retourne son chemin final.
+
+        La copie passe par un nom provisoire : l'ancien fichier du dossier de
+        sortie n'est remplace qu'une fois la copie complete. Si le deplacement
+        echoue (fichier ouvert dans une visionneuse, reseau coupe), le fichier
+        local est CONSERVE et son chemin figure dans le motif de l'echec.
+        """
+        cible = os.path.join(dossier_cible, os.path.basename(source))
+        partiel = cible + u".partiel"
+        try:
+            System.IO.File.Copy(source, partiel, True)
+            if System.IO.File.Exists(cible):
+                System.IO.File.Delete(cible)
+            System.IO.File.Move(partiel, cible)
+        except Exception as ex:
+            try:
+                if System.IO.File.Exists(partiel):
+                    System.IO.File.Delete(partiel)
+            except Exception:
+                pass
+            raise Exception(
+                u"Export reussi, mais deplacement impossible vers le dossier "
+                u"de sortie ({0}). Le fichier est conserve ici : {1}"
+                .format(ex, source))
+        try:
+            System.IO.File.Delete(source)
+        except Exception:
+            pass
+        return cible
+
+    def fmt_secondes(secondes):
+        """Duree courte lisible : '0.4 s', '12.3 s', '02:15'."""
+        if secondes < 60:
+            return u"{0:.1f} s".format(secondes)
+        return str_ui.fmt_duree(secondes)
 
     # ======================================================================
     # Fenetre principale
@@ -556,6 +628,17 @@ try:
                 u"Coupe la geometrie a la boite de coupe au lieu d'exclure "
                 u"seulement les elements hors boite.")
             sp_per_manuel.Children.Add(self.chk_geometrie_vue)
+            self.chk_geometrie_coupe = str_ui.checkbox(
+                u"Seulement pour les vues avec boite de coupe",
+                r["geometrie_vue_coupe_seule"],
+                u"L'option oblige Revit a ouvrir et dessiner chaque vue avant "
+                u"son export. Coche : les vues sans boite de coupe sont "
+                u"exportees sans elle, donc plus vite.\n"
+                u"Attention : sans l'option, la geometrie ne suit plus le "
+                u"niveau de detail de la vue. A comparer sur un export avant "
+                u"de l'adopter.")
+            self.chk_geometrie_coupe.Margin = Thickness(18, 2, 0, 2)
+            sp_per_manuel.Children.Add(self.chk_geometrie_coupe)
 
             items_phase = [(u"(toutes / defaut du modele)", -1)]
             for pid, pnom in self._phases:
@@ -738,6 +821,14 @@ try:
                 u"Ecrire un journal .log a cote des IFC", r["journal"],
                 u"Consigne les options transmises et la raison de chaque echec.")
             sp_outil.Children.Add(self.chk_journal)
+            self.chk_local = str_ui.checkbox(
+                u"Dossier reseau : ecrire en local, puis deplacer",
+                r["ecriture_locale"],
+                u"L'IFC est ecrit dans le dossier temporaire du poste, puis "
+                u"deplace vers le dossier de sortie une fois termine. Plus "
+                u"rapide sur le serveur.\nSans effet si le dossier de sortie "
+                u"est deja sur le poste.")
+            sp_outil.Children.Add(self.chk_local)
             pile.Children.Add(grp_outil)
 
             return defileur
@@ -905,6 +996,8 @@ try:
             r["prefixe"] = self.txt_prefixe.Text
             r["vue_seule"] = bool(self.chk_vue_seule.IsChecked)
             r["geometrie_vue"] = bool(self.chk_geometrie_vue.IsChecked)
+            r["geometrie_vue_coupe_seule"] = bool(
+                self.chk_geometrie_coupe.IsChecked)
             index_phase = self.cmb_phase.SelectedIndex
             if 0 <= index_phase < len(self._items_phase):
                 r["phase_id"] = int(self._items_phase[index_phase][1])
@@ -939,6 +1032,7 @@ try:
             r["nom_visible"] = bool(self.chk_nom_visible.IsChecked)
             r["nom_famille_type"] = bool(self.chk_nom_famille.IsChecked)
             r["journal"] = bool(self.chk_journal.IsChecked)
+            r["ecriture_locale"] = bool(self.chk_local.IsChecked)
             return r
 
         @property
@@ -1150,6 +1244,47 @@ try:
         except Exception as ex:
             return False, u"{0}".format(ex)
 
+    def ids_vues_ouvertes():
+        """Identifiants des vues ouvertes dans Revit (ensemble d'entiers)."""
+        ids = set()
+        try:
+            for uv in __revit__.ActiveUIDocument.GetOpenUIViews():
+                ids.add(str_ifc.id_value(uv.ViewId))
+        except Exception:
+            pass
+        return ids
+
+    def fermer_vues(ids_a_fermer):
+        """
+        Ferme les vues listees, sauf la vue active. Retire de l'ensemble celles
+        qui ont ete fermees et retourne (nombre_fermees, motif_d_echec).
+
+        Chaque vue activee pour l'option de geometrie de vue reste sinon
+        ouverte jusqu'a la fin : sur un lot, ce sont autant de vues 3D
+        completes gardees en memoire. A ne jamais appeler avec une transaction
+        ouverte.
+        """
+        fermees = 0
+        motif = u""
+        if not ids_a_fermer:
+            return fermees, motif
+        try:
+            uidoc = __revit__.ActiveUIDocument
+            id_active = str_ifc.id_value(uidoc.ActiveView.Id)
+            for uv in list(uidoc.GetOpenUIViews()):
+                vid = str_ifc.id_value(uv.ViewId)
+                if vid == id_active or vid not in ids_a_fermer:
+                    continue
+                try:
+                    uv.Close()
+                    ids_a_fermer.discard(vid)
+                    fermees += 1
+                except Exception as ex:
+                    motif = u"{0}".format(ex)
+        except Exception as ex:
+            motif = u"{0}".format(ex)
+        return fermees, motif
+
     class GestionEchecsExport(IFailuresPreprocessor):
         """
         Evite que Revit ouvre une boite de dialogue modale au milieu d'un lot.
@@ -1196,8 +1331,11 @@ try:
 
     def exporter_une_vue(dossier, radical, opts, nom_vue, conserver_guid):
         """
-        Lance doc.Export dans une transaction. Retourne les messages Revit
-        remontes pendant l'export (liste vide si tout s'est bien passe).
+        Lance doc.Export dans une transaction. Retourne (messages, retour,
+        duree_export, duree_cloture) : les messages Revit remontes pendant
+        l'export (liste vide si tout s'est bien passe), la valeur rendue par
+        doc.Export, puis les secondes passees dans doc.Export et dans la
+        cloture de la transaction.
 
         L'exporteur IFC modifie le document pendant l'export : sans transaction
         ouverte, Revit 2024 refuse avec "Modifying is forbidden because the
@@ -1229,16 +1367,20 @@ try:
                 u"Gestion des echecs non installee : {0}".format(ex))
 
         retour = None
+        depart_export = time.time()
+        fin_export = depart_export
         try:
             retour = doc.Export(dossier, radical, opts)
         finally:
+            fin_export = time.time()
             if t.GetStatus() == TransactionStatus.Started:
                 if conserver_guid:
                     t.Commit()
                 else:
                     t.RollBack()
             t.Dispose()
-        return gestion.messages, retour
+        return (gestion.messages, retour, fin_export - depart_export,
+                time.time() - fin_export)
 
     def executer_export(demande):
         """
@@ -1284,6 +1426,47 @@ try:
         except Exception:
             vue_initiale = None
 
+        # Vues deja ouvertes avant le lot : celles-la ne seront jamais fermees.
+        # Les autres, ouvertes par l'outil pour l'option de geometrie de vue,
+        # sont refermees au fur et a mesure.
+        vues_ouvertes_avant = ids_vues_ouvertes()
+        vues_a_fermer = set()
+        fermeture_signalee = [False]
+
+        def refermer_vues():
+            fermees, motif = fermer_vues(vues_a_fermer)
+            if motif and not fermeture_signalee[0]:
+                fermeture_signalee[0] = True
+                journal.ecrire(u"    [AVERT] Vue ouverte par l'outil non "
+                               u"refermee : {0}".format(motif))
+            return fermees
+
+        # Ecriture locale : seulement si le dossier de sortie est sur le reseau.
+        dossier_ecriture = dossier
+        dossier_local = None
+        conserves_local = set()
+        if reglages.get("ecriture_locale"):
+            if dossier_reseau(dossier):
+                dossier_local, motif_local = creer_dossier_local()
+                if dossier_local:
+                    dossier_ecriture = dossier_local
+                    journal.ecrire(u"Ecriture locale : {0} (puis deplacement "
+                                   u"vers le dossier de sortie)".format(
+                                       dossier_local))
+                else:
+                    journal.ecrire(u"[AVERT] Dossier temporaire local non "
+                                   u"cree, ecriture directe : {0}".format(
+                                       motif_local))
+            else:
+                journal.ecrire(u"Ecriture locale : sans objet, le dossier de "
+                               u"sortie n'est pas sur le reseau.")
+        else:
+            journal.ecrire(u"Ecriture locale : desactivee.")
+
+        # Cumul des phases de l'exporteur sur tout le lot : [[libelle, s]].
+        cumul_phases = []
+        index_cumul = {}
+
         prog = str_progress_sta.ProgressionSTA(len(cibles), TOOL_NAME,
                                                SCRIPT_VERSION)
         if not prog.disponible and prog.erreur_demarrage:
@@ -1307,7 +1490,8 @@ try:
                     break
 
                 view_id = str_ifc.id_value(vue.Id)
-                chemin_attendu = os.path.join(dossier, radical + extension)
+                chemin_attendu = os.path.join(dossier_ecriture,
+                                              radical + extension)
                 avant = etat_fichier(chemin_attendu)
 
                 journal.ecrire(u"")
@@ -1321,11 +1505,27 @@ try:
                 # Reglages propres a cette vue : l'option de geometrie de vue
                 # n'est transmise que si la vue a pu devenir active.
                 reglages_vue = dict(reglages)
+                duree_activation = 0.0
+                if (setup is None and reglages_vue["geometrie_vue"]
+                        and reglages_vue.get("geometrie_vue_coupe_seule")
+                        and not boite_de_coupe_active(vue)):
+                    reglages_vue["geometrie_vue"] = False
+                    journal.ecrire(u"    Pas de boite de coupe : option "
+                                   u"'geometrie de la vue' non appliquee a "
+                                   u"cette vue.")
                 if reglages_vue["geometrie_vue"]:
+                    depart_activation = time.time()
                     active, motif = activer_vue(vue)
                     if active:
+                        if view_id not in vues_ouvertes_avant:
+                            vues_a_fermer.add(view_id)
+                        # La vue precedente n'est plus active : la refermer.
+                        fermees = refermer_vues()
+                        duree_activation = time.time() - depart_activation
                         journal.ecrire(u"    Vue activee dans Revit "
-                                       u"(geometrie de la vue demandee).")
+                                       u"(geometrie de la vue demandee){0}."
+                                       .format(u", vue precedente refermee"
+                                               if fermees else u""))
                     else:
                         reglages_vue["geometrie_vue"] = False
                         journal.ecrire(
@@ -1338,6 +1538,7 @@ try:
                 depart_messages = len(capteur.messages)
                 try:
                     anomalies = []
+                    depart_options = time.time()
                     if setup is not None:
                         opts = str_ifc.options_depuis_setup(
                             setup, view_id, reglages_vue["vue_seule"],
@@ -1365,9 +1566,16 @@ try:
                     for ligne in anomalies:
                         journal.ecrire(u"    [AVERT] " + ligne)
 
-                    messages_revit, retour_export = exporter_une_vue(
-                        dossier, radical, opts, vue.Name,
-                        reglages_vue["guid_ifc"])
+                    duree_options = time.time() - depart_options
+
+                    suivi.debut_mesure()
+                    try:
+                        (messages_revit, retour_export, duree_export,
+                         duree_cloture) = exporter_une_vue(
+                            dossier_ecriture, radical, opts, vue.Name,
+                            reglages_vue["guid_ifc"])
+                    finally:
+                        phases = suivi.releve_phases()
                     messages_revit = (list(messages_revit)
                                       + capteur.messages[depart_messages:])
                     journal.ecrire(u"    doc.Export a retourne : {0}".format(
@@ -1375,9 +1583,37 @@ try:
                     for ligne in messages_revit:
                         journal.ecrire(u"    [REVIT] " + ligne)
 
-                    chemin = trouver_sortie(dossier, radical, extension)
+                    # Ou part le temps : etapes de l'outil, puis phases de
+                    # l'exporteur telles que Revit les nomme.
+                    etapes = [u"options {0}".format(fmt_secondes(duree_options))]
+                    if duree_activation:
+                        etapes.append(u"activation de la vue {0}".format(
+                            fmt_secondes(duree_activation)))
+                    etapes.append(u"doc.Export {0}".format(
+                        fmt_secondes(duree_export)))
+                    etapes.append(u"{0} de la transaction {1}".format(
+                        u"validation" if reglages_vue["guid_ifc"]
+                        else u"annulation", fmt_secondes(duree_cloture)))
+                    journal.ecrire(u"    Temps : " + u" | ".join(etapes))
+                    total_phases = sum([s for _l, s in phases])
+                    if suivi.branche and total_phases > 0:
+                        journal.ecrire(u"    Phases de l'exporteur (export et "
+                                       u"cloture, a ~0.2 s pres) :")
+                        for libelle, secondes in phases:
+                            journal.ecrire(
+                                u"        {0:>8}  {1:>3.0f} %  {2}".format(
+                                    fmt_secondes(secondes),
+                                    100.0 * secondes / total_phases, libelle))
+                            rang = index_cumul.get(libelle)
+                            if rang is None:
+                                index_cumul[libelle] = len(cumul_phases)
+                                cumul_phases.append([libelle, secondes])
+                            else:
+                                cumul_phases[rang][1] += secondes
+
+                    chemin = trouver_sortie(dossier_ecriture, radical,
+                                            extension)
                     existe, taille, mtime = etat_fichier(chemin)
-                    duree = time.time() - depart
 
                     if not existe:
                         raise Exception(
@@ -1394,6 +1630,38 @@ try:
                             and mtime <= avant[2]):
                         raise Exception(u"Fichier non reecrit : le resultat "
                                         u"est l'ancien export")
+
+                    if dossier_local:
+                        depart_deplacement = time.time()
+                        try:
+                            chemin = deplacer_fichier(chemin, dossier)
+                        except Exception:
+                            conserves_local.add(os.path.basename(chemin))
+                            raise
+                        # Fichiers annexes ecrits par l'exporteur a cote de
+                        # l'IFC (liens exportes...) : ils suivent, au mieux.
+                        try:
+                            for entree in os.listdir(dossier_local):
+                                if entree in conserves_local:
+                                    continue
+                                annexe = os.path.join(dossier_local, entree)
+                                if not os.path.isfile(annexe):
+                                    continue
+                                try:
+                                    deplacer_fichier(annexe, dossier)
+                                    journal.ecrire(u"    Fichier annexe "
+                                                   u"deplace : " + entree)
+                                except Exception as ex_annexe:
+                                    conserves_local.add(entree)
+                                    journal.ecrire(u"    [AVERT] {0}".format(
+                                        ex_annexe))
+                        except Exception:
+                            pass
+                        journal.ecrire(
+                            u"    Deplacement vers le dossier de sortie : {0}"
+                            .format(fmt_secondes(
+                                time.time() - depart_deplacement)))
+                    duree = time.time() - depart
 
                     note = u""
                     if taille < SEUIL_SUSPECT_OCTETS:
@@ -1436,6 +1704,29 @@ try:
                 except Exception as ex:
                     journal.ecrire(u"[AVERT] Vue d'origine non restauree : "
                                    u"{0}".format(ex))
+            # La derniere vue ouverte par l'outil n'est plus active : la fermer.
+            refermer_vues()
+            # Dossier local : le retirer s'il est vide, sinon dire ou il est.
+            if dossier_local:
+                try:
+                    restes = os.listdir(dossier_local)
+                    if restes:
+                        journal.ecrire(
+                            u"[AVERT] {0} fichier(s) reste(s) dans le dossier "
+                            u"local : {1}".format(len(restes), dossier_local))
+                    else:
+                        os.rmdir(dossier_local)
+                except Exception:
+                    pass
+
+        total_cumul = sum([s for _l, s in cumul_phases])
+        if len(reussis) + len(echecs) > 1 and total_cumul > 0:
+            journal.ecrire(u"")
+            journal.ecrire(u"Phases de l'exporteur, cumul du lot :")
+            for libelle, secondes in cumul_phases:
+                journal.ecrire(u"    {0:>8}  {1:>3.0f} %  {2}".format(
+                    fmt_secondes(secondes), 100.0 * secondes / total_cumul,
+                    libelle))
 
         journal.ecrire(u"")
         journal.ecrire(u"=" * 70)

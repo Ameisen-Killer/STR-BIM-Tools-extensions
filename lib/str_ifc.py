@@ -238,6 +238,8 @@ DEFAUTS = {
     "parts":              False,   # ExportPartsAsBuildingElements
     "solides":            False,   # ExportSolidModelRep
     "geometrie_vue":      False,   # UseActiveViewGeometry
+    "geometrie_vue_coupe_seule": False,  # outil : option reservee aux vues
+                                         # qui ont une boite de coupe
     "guid_ifc":           False,   # StoreIFCGUID
     "bbox":               False,   # ExportBoundingBox
     "triangulation":      False,   # UseOnlyTriangulation
@@ -257,6 +259,7 @@ DEFAUTS = {
     # Outil (non transmis a l'exporteur)
     "setup_modele":       u"",     # nom du setup IFC du modele, vide = manuel
     "journal":            True,
+    "ecriture_locale":    True,    # dossier reseau : ecrire en local, deplacer
 }
 
 

@@ -1,5 +1,5 @@
 title: Export IFC
 tooltip: "Exporte plusieurs vues 3D en IFC, un fichier par vue."
 author: Tony VARIN
-version: 3.6.2
+version: 3.7.0
 min_revit_ver: 2024
