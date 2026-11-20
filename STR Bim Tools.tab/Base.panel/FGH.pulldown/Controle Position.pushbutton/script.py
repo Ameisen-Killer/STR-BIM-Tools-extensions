@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.0.1"
+SCRIPT_VERSION = "1.0.2"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = u"Contrôle Position Réservations"
 # =============================================================================
@@ -1183,6 +1183,24 @@ try:
             # Rien a signaler : on montre tout plutot qu'un tableau vide
             cb.SelectedIndex = F_TOUT
         refresh()
+
+        # Rattachee a Revit et passee au premier plan : sans proprietaire, la
+        # fenetre peut s'ouvrir derriere Revit.
+        try:
+            from System.Windows.Interop import WindowInteropHelper
+            WindowInteropHelper(win).Owner = __revit__.MainWindowHandle
+        except Exception:
+            pass
+
+        def _activer(s, e):
+            try:
+                win.Activate()
+                win.Topmost = True
+                win.Topmost = False
+            except Exception:
+                pass
+
+        win.Loaded += _activer
         win.ShowDialog()
 
     # =========================================================================

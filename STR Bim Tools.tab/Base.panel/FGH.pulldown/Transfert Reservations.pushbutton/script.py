@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "3.7.2"
+SCRIPT_VERSION = "3.7.3"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Reservations RES vs STR"
 # =============================================================================
@@ -261,7 +261,7 @@ MSG_VIEW3D_NOTPL  = u"Gabarit de vue '{}' introuvable.\nLa vue est créée sans 
 LBL_NO_LINK     = u"Aucune maquette liée dont le nom contient '{}' n'a été trouvée.\n\nVérifie que la maquette est chargée."
 LBL_NO_RES      = u"Aucune réservation (famille '{}') trouvée dans le lien."
 
-LBL_CSV_HEADER  = u"StatutVAL;StatutSTR;Numero;Famille;Niveau;Demandeur;DateDem;RESDem;DEM_Nouveau;DEM_Modifie;DEM_Supprime;Responsable;DateVal;CommentaireVAL;Detail;Ecart;Action;STR_Numero;STR_StatutVAL;STR_DateVal;STR_CommentaireVAL;STR_Id;Geometrie"
+LBL_CSV_HEADER  = u"StatutVAL;StatutSTR;Numero;Famille;Niveau;Demandeur;DateDem;RESDem;DEM_Nouveau;DEM_Modifie;DEM_Supprime;Responsable;DateVal;CommentaireVAL;Detail;Ecart;Action;STR_Numero;STR_StatutVAL;STR_DateVal;STR_CommentaireVAL;STR_Id;Geometrie;RES_Id"
 LBL_CSV_OK      = u"Export CSV réussi :\n{}"
 LBL_CSV_ERR     = u"Erreur export CSV :\n{}"
 
@@ -627,6 +627,7 @@ class ReservationRow(object):
         if self.DemSupprime:
             marques.append(u"Suppr.")
         self.RMarques   = u" + ".join(marques)
+        self.RId        = u"{}".format(_eid_int(link_element.Id)) if cote_res else u""
 
         # --- Colonnes de droite : la reservation telle qu'elle est dans la STR.
         # Vides quand elle n'y a pas encore ete copiee.
@@ -657,7 +658,7 @@ class ReservationRow(object):
             num or u"", famille or u"", niveau or u"",
             demandeur or u"", res_dem or u"", res_resp or u"",
             val_comment or u"", date_dem or u"", val_date or u"",
-            self.SNum, self.SVal, self.SValComment, self.SId, self.Ecart,
+            self.SNum, self.SVal, self.SValComment, self.SId, self.Ecart, self.RId,
         ]).lower()
 
         # Couleur de ligne
@@ -2154,11 +2155,12 @@ XAML = """
         </Style>
       </DataGrid.RowStyle>
       <DataGrid.Columns>
-        <!-- Bloc RES : 9 colonnes. Les quatre premieres dans le meme ordre que le bloc STR -->
+        <!-- Bloc RES : 10 colonnes. Les cinq premieres dans le meme ordre que le bloc STR -->
         <DataGridTextColumn Binding="{Binding RNum}"       Width="92"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
         <DataGridTextColumn Binding="{Binding ValStatut}"  Width="78"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}" FontWeight="SemiBold"/>
         <DataGridTextColumn Binding="{Binding ValDate}"    Width="76"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}" SortMemberPath="ValDateSort"/>
         <DataGridTextColumn Binding="{Binding ValComment}" Width="120" IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
+        <DataGridTextColumn Binding="{Binding RId}"        Width="72"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
         <DataGridTextColumn Binding="{Binding RFamille}"   Width="125" IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
         <DataGridTextColumn Binding="{Binding RNiveau}"    Width="70"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
         <DataGridTextColumn Binding="{Binding RDemandeur}" Width="76"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
@@ -2224,12 +2226,12 @@ XAML = """
 
 # Nombre de colonnes de chaque bloc, dans l'ordre du XAML : RES, ecart, STR.
 # Sert a caler le bandeau des trois blocs sur les colonnes.
-GROUPES_COLONNES = (9, 5, 5)
+GROUPES_COLONNES = (10, 5, 5)
 
 # En-tetes des colonnes (ordre identique aux colonnes XAML)
 COLUMN_HEADERS = [
     # Bloc RES
-    u"N° réservation", u"Statut VAL", u"Date VAL", u"Commentaire VAL",
+    u"N° réservation", u"Statut VAL", u"Date VAL", u"Commentaire VAL", u"Id RES",
     u"Famille", u"Niveau", u"Demandeur", u"Date dem.", u"Marques",
     # Bloc ecart et action
     u"", u"Géom.", u"Écart", u"Action à la synchro", u"Différences",
@@ -2449,6 +2451,30 @@ def _reload_grid(window, state, link_name):
         state["nb_link_total"], state["nb_host_total"])
 
     _apply_filter(window, state)
+
+
+def _devant_revit(window):
+    """
+    Rattache la fenetre a la fenetre principale de Revit et la fait passer au
+    premier plan. Sans proprietaire, une fenetre WPF ouverte depuis pyRevit peut
+    s'ouvrir DERRIERE Revit et sembler ne jamais s'afficher.
+    """
+    try:
+        from System.Windows.Interop import WindowInteropHelper
+        WindowInteropHelper(window).Owner = revit.uidoc.Application.MainWindowHandle
+    except Exception:
+        pass
+
+    def _activer(s, e):
+        try:
+            window.Activate()
+            # Aller-retour Topmost : force le premier plan sans rester au-dessus
+            window.Topmost = True
+            window.Topmost = False
+        except Exception:
+            pass
+
+    window.Loaded += _activer
 
 
 def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
@@ -2797,7 +2823,7 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
         try:
             lines = [LBL_CSV_HEADER]
             for r in export_rows:
-                lines.append(u";".join([u"{}"] * 23).format(
+                lines.append(u";".join([u"{}"] * 24).format(
                     r.ValStatut, r.Statut, r.Num, r.Famille, r.Niveau,
                     r.Demandeur, r.DateDem,
                     r.ResDem,
@@ -2808,7 +2834,7 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
                     r.ValDate, r.ValComment,
                     r.Detail.replace(";", " /"),
                     r.Ecart, r.Action, r.SNum, r.SVal, r.SValDate,
-                    r.SValComment.replace(";", " /"), r.SId, r.GeomTexte
+                    r.SValComment.replace(";", " /"), r.SId, r.GeomTexte, r.RId
                 ))
             with io.open(csv_path, 'w', encoding='utf-8-sig') as f:
                 f.write(u"\n".join(lines))
@@ -2850,6 +2876,7 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
     window.FindName("btn_view3d").Click += on_view3d
     window.FindName("btn_close").Click  += lambda s, e: window.Close()
 
+    _devant_revit(window)
     window.ShowDialog()
 
 

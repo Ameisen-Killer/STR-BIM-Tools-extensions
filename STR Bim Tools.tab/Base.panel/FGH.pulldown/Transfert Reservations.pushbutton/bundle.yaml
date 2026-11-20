@@ -1,5 +1,5 @@
 title: "Sync\nReservations"
 tooltip: "Reporte dans la maquette STR les réservations nouvelles, modifiées ou annulées de la maquette SPV."
 author: Tony VARIN
-version: 3.7.2
+version: 3.7.3
 min_revit_ver: 2024
