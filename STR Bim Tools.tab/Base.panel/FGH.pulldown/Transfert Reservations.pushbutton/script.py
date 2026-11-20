@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "3.6.1"
+SCRIPT_VERSION = "3.7.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Reservations RES vs STR"
 # =============================================================================
@@ -51,6 +51,7 @@ try:
     from System.Windows.Controls import ComboBoxItem, DataGridCell
 
     from pyrevit import revit, forms
+    import fgh_res_geom
     from Autodesk.Revit.DB import (
         FilteredElementCollector,
         FilteredWorksetCollector,
@@ -138,7 +139,49 @@ STATUT_VAL      = "STATUT VAL" # Cas E : seule la validation (statut, date, comm
 # =============================================================================
 LBL_WINDOW      = u"{}  [v{}]"
 LBL_FOOTER      = u"v{} | STR BIM Tools by Tony Varin"
-LBL_TITRE       = u"Comparaison Réservations — STR ({} él.) vs SPV/{} ({} él.)"
+LBL_TITRE       = u"Synchronisation des réservations  |  maquette STR ({} él.)  ←  lien {} ({} él.)"
+LBL_BAND_RES    = u"MAQUETTE RES (lien) — ce que demande et valide la RES"
+LBL_BAND_MID    = u"ÉCART ET ACTION"
+LBL_BAND_STR    = u"MAQUETTE STR — ce qui est en place"
+
+# Libelle en clair de chaque statut de comparaison (colonne « Écart » et filtre)
+ECART_LABELS = {
+    "ABSENT":     u"Absente de la STR",
+    "DIFFERENT":  u"Demande différente",
+    "INVALIDE":   u"Validation retirée",
+    "STATUT VAL": u"Validation différente",
+    "STR_SEUL":   u"Absente de la RES",
+    "OK":         u"Identique",
+}
+# Ce que fera « Synchroniser » sur la ligne (colonne « Action »), par cas
+ACTION_LABELS = {
+    "A": u"Copier dans la STR",
+    "B": u"Remplacer dans la STR",
+    "C": u"Marquer supprimée",
+    "D": u"Marquer supprimée",
+    "E": u"Reprendre la validation",
+}
+ACTION_COULEURS = {"A": "#DFF0D8", "B": "#FFF3CD", "C": "#FFD9A0",
+                   "D": "#FFD9A0", "E": "#D6EAF8"}
+LBL_SANS_ACTION_NV  = u"Aucune (non validée)"
+LBL_SANS_ACTION_SUP = u"Aucune (supprimée dans la RES)"
+LBL_SANS_ACTION     = u"Aucune"
+
+# Voyant de geometrie (colonne « Géom. ») : position et volumetrie reelles de la
+# reservation, mesurees des deux cotes. Rouge = decalee, orange = volumetrie
+# differente, vert = conforme, gris = non mesurable, rien = un seul cote.
+GEOM_ROUGE, GEOM_ORANGE, GEOM_VERT, GEOM_GRIS = "#E74C3C", "#F39C12", "#2ECC71", "#BDC3C7"
+LBL_GEOM_STAT   = u"● Géométrie : {} décalée(s)  |  {} volumétrie différente"
+LBL_F_GEOM      = u"Écarts de géométrie"
+TIP_F_GEOM      = (u"N'affiche que les réservations au voyant rouge (décalée) ou orange "
+                   u"(volumétrie différente)")
+LBL_GEOM_PIED   = (u"\n\nTolérances : position {:g} cm, dimension {:g} cm, volume {:g} %.\n"
+                   u"Écarts lus dans le repère de la maquette STR, RES − STR.\n"
+                   u"Vue 3D des deux positions et recalage : outil « Contrôle Position ».")
+
+# Transformation du lien et mesures deja faites cote lien (le lien ne change
+# pas pendant que la fenetre est ouverte, la STR si).
+_GEOM_CTX = {"transform": None, "cache": {}}
 LBL_ABSENT_STAT = u"✖ Absentes : {}"
 LBL_DIFF_STAT   = u"⚠ Différentes : {}"
 LBL_INVALID_STAT = u"⛔ Invalidées : {}"
@@ -182,7 +225,7 @@ HDR_SEL           = u""
 LBL_F_TITLE       = u"Filtres :"
 LBL_F_VAL         = u"Statut VAL :"
 LBL_F_DATE        = u"Date VAL :"
-LBL_F_STAT        = u"Statut synchro :"
+LBL_F_STAT        = u"Écart :"
 LBL_F_TXT         = u"Recherche :"
 LBL_F_ACT         = u"Actionnables seulement"
 LBL_F_ALL         = u"(Tous — {})"
@@ -213,7 +256,7 @@ MSG_VIEW3D_NOTPL  = u"Gabarit de vue '{}' introuvable.\nLa vue est créée sans 
 LBL_NO_LINK     = u"Aucune maquette liée dont le nom contient '{}' n'a été trouvée.\n\nVérifie que la maquette est chargée."
 LBL_NO_RES      = u"Aucune réservation (famille '{}') trouvée dans le lien."
 
-LBL_CSV_HEADER  = u"StatutVAL;StatutSTR;Numero;Famille;Niveau;Demandeur;DateDem;RESDem;DEM_Nouveau;DEM_Modifie;DEM_Supprime;Responsable;DateVal;CommentaireVAL;Detail"
+LBL_CSV_HEADER  = u"StatutVAL;StatutSTR;Numero;Famille;Niveau;Demandeur;DateDem;RESDem;DEM_Nouveau;DEM_Modifie;DEM_Supprime;Responsable;DateVal;CommentaireVAL;Detail;Ecart;Action;STR_Numero;STR_StatutVAL;STR_DateVal;STR_CommentaireVAL;STR_Id;Geometrie"
 LBL_CSV_OK      = u"Export CSV réussi :\n{}"
 LBL_CSV_ERR     = u"Erreur export CSV :\n{}"
 
@@ -413,7 +456,7 @@ def _diff_detail(snap_host, snap_link):
         v_h = snap_host.get(key, "") or ""
         v_l = snap_link.get(key, "") or ""
         if v_h != v_l:
-            parts.append(u"{}: STR=[{}] / SPV=[{}]".format(label, v_h, v_l))
+            parts.append(u"{}: STR=[{}] / RES=[{}]".format(label, v_h, v_l))
     return u" | ".join(parts)
 
 
@@ -431,8 +474,9 @@ def _val_diff_detail(e_host, e_link):
                          (PARAM_VAL_COMMENT, u"Commentaire VAL")):
         v_h = (_get_param_str(e_host, pname) or u"").strip()
         v_l = (_get_param_str(e_link, pname) or u"").strip()
-        if v_h != v_l:
-            parts.append(u"{}: STR=[{}] / SPV=[{}]".format(label, v_h, v_l))
+        # Un tiret seul est la facon RES d'ecrire « rien » : pas un ecart
+        if (u"" if v_h == u"-" else v_h) != (u"" if v_l == u"-" else v_l):
+            parts.append(u"{}: STR=[{}] / RES=[{}]".format(label, v_h, v_l))
     return u" | ".join(parts)
 
 
@@ -562,11 +606,53 @@ class ReservationRow(object):
         else:
             self.IsSelected = False
 
+        # --- Colonnes de gauche : la reservation telle qu'elle est dans la RES.
+        # Vides quand la reservation n'existe que dans la STR.
+        cote_res = link_element is not None
+        self.RNum       = num       if cote_res else u""
+        self.RFamille   = famille   if cote_res else u""
+        self.RNiveau    = niveau    if cote_res else u""
+        self.RDemandeur = demandeur if cote_res else u""
+        self.RDateDem   = date_dem  if cote_res else u""
+        marques = []
+        if self.DemNouveau:
+            marques.append(u"Nouv.")
+        if self.DemModifie:
+            marques.append(u"Modif.")
+        if self.DemSupprime:
+            marques.append(u"Suppr.")
+        self.RMarques   = u" + ".join(marques)
+
+        # --- Colonnes de droite : la reservation telle qu'elle est dans la STR.
+        # Vides quand elle n'y a pas encore ete copiee.
+        if host_element is not None:
+            self.SNum        = _get_param_str(host_element, PARAM_NUM) or u""
+            self.SFamille    = _get_family_name(host_element)
+            self.SVal        = _get_param_str(host_element, PARAM_VAL_STATUT) or u""
+            self.SValDate    = _get_param_str(host_element, PARAM_VAL_DATE) or u""
+            self.SValComment = _get_param_str(host_element, PARAM_VAL_COMMENT) or u""
+            self.SId         = u"{}".format(_eid_int(host_element.Id))
+        else:
+            self.SNum = self.SFamille = self.SVal = u""
+            self.SValDate = self.SValComment = self.SId = u""
+        self.SValDateSort = _date_to_sort_key(self.SValDate)
+
+        # --- Colonnes du milieu : completees par _finaliser_row (cas A a E)
+        self.Ecart  = ECART_LABELS.get(statut, statut)
+        self.Action = u""
+        # Voyant de geometrie : pose par _mesurer_geometrie pour les paires
+        self.GeomCouleur = "Transparent"
+        self.GeomTri     = 9
+        self.GeomTip     = u""
+        self.GeomDetail  = u""
+        self.GeomTexte   = u""
+
         # Texte concatene en minuscules — support de la recherche libre de la barre de filtres
         self.SearchBlob = u" ".join([
             num or u"", famille or u"", niveau or u"",
             demandeur or u"", res_dem or u"", res_resp or u"",
             val_comment or u"", date_dem or u"", val_date or u"",
+            self.SNum, self.SVal, self.SValComment, self.SId, self.Ecart,
         ]).lower()
 
         # Couleur de ligne
@@ -917,7 +1003,98 @@ def compare_reservations(host_elems, link_elems):
         cmp_order.get(r.Statut, 9)
     ))
 
+    for r in rows:
+        _finaliser_row(r)
+
     return rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid
+
+
+def _mesurer_geometrie(row):
+    """
+    Voyant de geometrie d'une reservation presente des deux cotes : compare la
+    position et la volumetrie reelles (solides), pas les parametres. Ne change
+    ni le statut ni l'action de la ligne : c'est une alerte, a traiter avec
+    l'outil « Contrôle Position ».
+    """
+    e_host, e_link = row._host_elem, row._link_elem
+    if e_host is None or e_link is None:
+        return
+    try:
+        cle = _eid_int(e_link.Id)
+        cache = _GEOM_CTX["cache"]
+        if cle not in cache:
+            cache[cle] = fgh_res_geom.mesurer(e_link, _GEOM_CTX["transform"])
+        c = fgh_res_geom.comparer(fgh_res_geom.mesurer(e_host, None), cache[cle])
+    except Exception:
+        c = None
+
+    if c is None:
+        row.GeomCouleur, row.GeomTri = GEOM_GRIS, 2
+        row.GeomTexte = u"Non mesurable"
+        row.GeomTip = row.GeomDetail = u"Géométrie illisible d'un des deux côtés."
+        return
+
+    lignes = [u"Réservation {}".format(row.Num or row.SNum or u"(sans N°)"), u""]
+    if c["deplacee"]:
+        lignes.append(u"DÉCALÉE : le centre côté RES est à {:.1f} cm de celui de la STR".format(
+            c["ecart"]))
+    else:
+        lignes.append(u"Position identique (écart {:.1f} cm)".format(c["ecart"]))
+    lignes.append(u"     ΔX {:+.1f} cm   |   ΔY {:+.1f} cm   |   ΔZ {:+.1f} cm".format(
+        c["d"][0], c["d"][1], c["d"][2]))
+    lignes.append(u"")
+    lignes.append(u"VOLUMÉTRIE DIFFÉRENTE" if c["volumetrie"] else u"Volumétrie identique")
+    lignes.append(u"     Encombrement STR : {:.1f} x {:.1f} x {:.1f} cm".format(*c["dims_str"]))
+    lignes.append(u"     Encombrement RES : {:.1f} x {:.1f} x {:.1f} cm".format(*c["dims_res"]))
+    lignes.append(u"     Volume STR {:.1f} L  →  RES {:.1f} L  ({:+.1f} %)".format(
+        c["vol_str"], c["vol_res"], c["dvol"]))
+    lignes.append(u"     Recouvrement des deux encombrements : {:.0f} %".format(c["recouvrement"]))
+    if c["approx"]:
+        lignes.append(u"")
+        lignes.append(u"Mesure approchée : boîte englobante, pas de solide lisible.")
+    row.GeomDetail = u"\n".join(lignes) + LBL_GEOM_PIED.format(
+        fgh_res_geom.TOL_POSITION_CM, fgh_res_geom.TOL_DIMENSION_CM,
+        fgh_res_geom.TOL_VOLUME_PCT)
+
+    if c["deplacee"]:
+        row.GeomCouleur, row.GeomTri = GEOM_ROUGE, 0
+        row.GeomTexte = u"Décalée de {:.1f} cm".format(c["ecart"])
+        if c["volumetrie"]:
+            row.GeomTexte += u" + volumétrie différente"
+    elif c["volumetrie"]:
+        row.GeomCouleur, row.GeomTri = GEOM_ORANGE, 1
+        row.GeomTexte = u"Volumétrie différente ({:+.1f} %)".format(c["dvol"])
+    else:
+        row.GeomCouleur, row.GeomTri = GEOM_VERT, 3
+        row.GeomTexte = u"Conforme"
+    row.GeomTip = row.GeomTexte + (u" — cliquer pour le détail" if row.GeomTri < 3 else u"")
+
+
+def _finaliser_row(row):
+    """
+    Pose sur la ligne ce que « Synchroniser » en fera : libelle de l'action,
+    couleur, et coche. Une ligne n'est cochable que si elle declenche vraiment
+    un des cas A a E : la colonne Action, la couleur et la coche disent donc
+    toujours la meme chose.
+    """
+    _mesurer_geometrie(row)
+    cas = _classify_row(row)
+    row.IsSelectable = cas is not None
+    row.IsSelected   = cas is not None
+    if cas is not None:
+        row.Action = ACTION_LABELS[cas]
+        row.RowBg  = ACTION_COULEURS[cas]
+        return
+    row.RowBg = "#ECECEC" if row.Statut == STATUT_STR_SEUL else "#FFFFFF"
+    if row.Statut == STATUT_OK:
+        row.Action = u""
+    elif row.Statut == STATUT_ABSENT and row._link_elem is not None \
+            and _is_statut_valide(row._link_elem):
+        row.Action = LBL_SANS_ACTION_SUP
+    elif row.Statut in (STATUT_ABSENT, STATUT_DIFF):
+        row.Action = LBL_SANS_ACTION_NV
+    else:
+        row.Action = LBL_SANS_ACTION
 
 
 # =============================================================================
@@ -1762,12 +1939,32 @@ XAML = """
 <Window
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="" Width="1500" Height="700"
+    Title="" Width="1700" Height="820"
     MinWidth="1100" MinHeight="480"
     ResizeMode="CanResize" Background="White"
-    WindowStartupLocation="CenterScreen">
+    WindowStartupLocation="CenterScreen" WindowState="Maximized">
+  <Window.Resources>
+    <!-- Un style d'en-tete par bloc : RES bleu, ecart jaune, STR vert -->
+    <Style x:Key="HdrRes" TargetType="DataGridColumnHeader">
+      <Setter Property="Background" Value="#D0E4F7"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="6,4"/>
+      <Setter Property="BorderBrush" Value="#C0D0E0"/>
+      <Setter Property="BorderThickness" Value="0,0,1,1"/>
+    </Style>
+    <Style x:Key="HdrMid" TargetType="DataGridColumnHeader" BasedOn="{StaticResource HdrRes}">
+      <Setter Property="Background" Value="#FBE8A6"/>
+    </Style>
+    <Style x:Key="HdrStr" TargetType="DataGridColumnHeader" BasedOn="{StaticResource HdrRes}">
+      <Setter Property="Background" Value="#CFE8C6"/>
+    </Style>
+    <Style x:Key="TipDetail" TargetType="TextBlock">
+      <Setter Property="ToolTip" Value="{Binding Detail}"/>
+    </Style>
+  </Window.Resources>
   <Grid>
     <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
@@ -1776,14 +1973,14 @@ XAML = """
     </Grid.RowDefinitions>
 
     <!-- Titre -->
-    <TextBlock x:Name="lbl_titre" Grid.Row="0"
-               FontSize="13" FontWeight="SemiBold"
-               Margin="10,10,10,4"/>
+    <Border Grid.Row="0" Background="#2F6496" Padding="14,9">
+      <TextBlock x:Name="lbl_titre" FontSize="13" FontWeight="SemiBold" Foreground="White"/>
+    </Border>
 
     <!-- Barre de statistiques -->
     <Border Grid.Row="1" Background="#F0F4FA"
             BorderBrush="#C0D0E0" BorderThickness="0,0,0,1"
-            Padding="10,5" Margin="0,0,0,4">
+            Padding="10,5">
       <WrapPanel Orientation="Horizontal">
         <Border Background="#DFF0D8" CornerRadius="4" Padding="8,3" Margin="0,3,8,3">
           <TextBlock x:Name="lbl_valide" FontSize="12" FontWeight="SemiBold"/>
@@ -1806,6 +2003,9 @@ XAML = """
         <Border Background="#DFF0D8" CornerRadius="4" Padding="8,3" Margin="0,3,8,3">
           <TextBlock x:Name="lbl_ok" FontSize="12" FontWeight="SemiBold"/>
         </Border>
+        <Border Background="#FADBD8" CornerRadius="4" Padding="8,3" Margin="0,3,8,3">
+          <TextBlock x:Name="lbl_geom" FontSize="12" FontWeight="SemiBold"/>
+        </Border>
         <Border Background="#E8E8E8" CornerRadius="4" Padding="8,3" Margin="0,3,16,3">
           <TextBlock x:Name="lbl_str_seul" FontSize="12" FontWeight="SemiBold"/>
         </Border>
@@ -1826,13 +2026,17 @@ XAML = """
       </WrapPanel>
     </Border>
 
-    <!-- Barre de filtres — WrapPanel : passe sur deux lignes si la fenetre est retrecie -->
+    <!-- Barre de filtres : WrapPanel, passe sur deux lignes si la fenetre est retrecie -->
     <Border Grid.Row="2" Background="#F0F6FF"
             BorderBrush="#C0D0E0" BorderThickness="0,0,0,1"
-            Padding="10,5" Margin="0,0,0,4">
+            Padding="10,5" Margin="0,0,0,6">
       <WrapPanel Orientation="Horizontal">
         <TextBlock x:Name="lbl_f_title" FontSize="11" FontWeight="SemiBold"
                    Foreground="#2F6496" VerticalAlignment="Center" Margin="0,3,10,3"/>
+        <TextBlock x:Name="lbl_f_stat" FontSize="11"
+                   VerticalAlignment="Center" Margin="0,3,4,3"/>
+        <ComboBox x:Name="cb_statut" Width="190" Height="24" FontSize="11"
+                  VerticalContentAlignment="Center" Margin="0,3,12,3"/>
         <TextBlock x:Name="lbl_f_val" FontSize="11"
                    VerticalAlignment="Center" Margin="0,3,4,3"/>
         <ComboBox x:Name="cb_val_statut" Width="130" Height="24" FontSize="11"
@@ -1841,15 +2045,13 @@ XAML = """
                    VerticalAlignment="Center" Margin="0,3,4,3"/>
         <ComboBox x:Name="cb_val_date" Width="150" Height="24" FontSize="11"
                   VerticalContentAlignment="Center" Margin="0,3,12,3"/>
-        <TextBlock x:Name="lbl_f_stat" FontSize="11"
-                   VerticalAlignment="Center" Margin="0,3,4,3"/>
-        <ComboBox x:Name="cb_statut" Width="135" Height="24" FontSize="11"
-                  VerticalContentAlignment="Center" Margin="0,3,12,3"/>
         <TextBlock x:Name="lbl_f_txt" FontSize="11"
                    VerticalAlignment="Center" Margin="0,3,4,3"/>
         <TextBox x:Name="tb_search" Width="140" Height="24" FontSize="11"
                  VerticalContentAlignment="Center" Margin="0,3,12,3"/>
         <CheckBox x:Name="chk_actionnable" FontSize="11"
+                  VerticalAlignment="Center" Margin="0,3,10,3"/>
+        <CheckBox x:Name="chk_geom" FontSize="11"
                   VerticalAlignment="Center" Margin="0,3,10,3"/>
         <Button x:Name="btn_reset" Width="95" Height="24" Margin="0,3,12,3"
                 Background="#BDC3C7" Foreground="#333333"
@@ -1863,61 +2065,88 @@ XAML = """
       </WrapPanel>
     </Border>
 
-    <!-- DataGrid -->
-    <DataGrid x:Name="dg_main" Grid.Row="3"
+    <!-- Bandeau des trois blocs : largeurs recalees par le code sur celles des colonnes -->
+    <Grid x:Name="band" Grid.Row="3" Margin="9,0,8,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="760"/>
+        <ColumnDefinition Width="500"/>
+        <ColumnDefinition Width="400"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+      <Border Grid.Column="0" Background="#2F6496" Padding="8,5" BorderBrush="White" BorderThickness="0,0,2,0">
+        <TextBlock x:Name="lbl_b_res" FontSize="12" FontWeight="Bold" Foreground="White"
+                   TextTrimming="CharacterEllipsis"/>
+      </Border>
+      <Border Grid.Column="1" Background="#B9770E" Padding="8,5" BorderBrush="White" BorderThickness="0,0,2,0">
+        <TextBlock x:Name="lbl_b_mid" FontSize="12" FontWeight="Bold" Foreground="White"
+                   TextTrimming="CharacterEllipsis"/>
+      </Border>
+      <Border Grid.Column="2" Background="#1E8449" Padding="8,5">
+        <TextBlock x:Name="lbl_b_str" FontSize="12" FontWeight="Bold" Foreground="White"
+                   TextTrimming="CharacterEllipsis"/>
+      </Border>
+    </Grid>
+
+    <!-- DataGrid : une ligne par reservation, RES a gauche, ecart au milieu, STR a droite -->
+    <DataGrid x:Name="dg_main" Grid.Row="4"
               Margin="8,0,8,4"
               AutoGenerateColumns="False"
               IsReadOnly="False"
-              GridLinesVisibility="Horizontal"
+              GridLinesVisibility="All"
+              HorizontalGridLinesBrush="#DDE4EC" VerticalGridLinesBrush="#DDE4EC"
               BorderBrush="#C0D0E0" BorderThickness="1"
               HeadersVisibility="Column"
               SelectionMode="Extended"
               CanUserResizeColumns="True"
               CanUserSortColumns="True"
+              CanUserReorderColumns="False"
               FontSize="12"
-              RowBackground="White"
-              AlternatingRowBackground="#E8F0FA">
+              RowBackground="White">
       <DataGrid.RowStyle>
         <Style TargetType="DataGridRow">
           <Setter Property="Background" Value="{Binding RowBg}"/>
         </Style>
       </DataGrid.RowStyle>
-      <DataGrid.ColumnHeaderStyle>
-        <Style TargetType="DataGridColumnHeader">
-          <Setter Property="Background" Value="#D0E4F7"/>
-          <Setter Property="FontWeight" Value="SemiBold"/>
-          <Setter Property="Padding" Value="6,4"/>
-          <Setter Property="BorderBrush" Value="#C0D0E0"/>
-          <Setter Property="BorderThickness" Value="0,0,1,1"/>
-        </Style>
-      </DataGrid.ColumnHeaderStyle>
       <DataGrid.Columns>
-        <!-- Colonne checkbox : DataGridCheckBoxColumn avec SortMemberPath pour le tri -->
-        <DataGridCheckBoxColumn Header="" Binding="{Binding IsSelected, Mode=TwoWay}"
-                                Width="34" IsReadOnly="False" SortMemberPath="IsSelected"/>
-        <!-- Groupe validation (VAL) -->
-        <DataGridTextColumn Header="StatutVAL"   Binding="{Binding ValStatut}"  Width="80"  IsReadOnly="True"/>
-        <DataGridTextColumn Header="DateVal"      Binding="{Binding ValDate}"    Width="80"  IsReadOnly="True" SortMemberPath="ValDateSort"/>
-        <DataGridTextColumn Header="CommentVAL"   Binding="{Binding ValComment}" Width="160" IsReadOnly="True"/>
-        <!-- Groupe comparaison (STR) -->
-        <DataGridTextColumn Header="StatutSTR"   Binding="{Binding Statut}"     Width="100"  IsReadOnly="True"/>
-        <DataGridTextColumn Header="Numero"      Binding="{Binding Num}"        Width="100" IsReadOnly="True"/>
-        <DataGridTextColumn Header="Famille"     Binding="{Binding Famille}"    Width="155" IsReadOnly="True"/>
-        <DataGridTextColumn Header="Niveau"      Binding="{Binding Niveau}"     Width="85"  IsReadOnly="True"/>
-        <DataGridTextColumn Header="Demandeur"   Binding="{Binding Demandeur}"  Width="85"  IsReadOnly="True"/>
-        <DataGridTextColumn Header="DateDem"     Binding="{Binding DateDem}"    Width="80"  IsReadOnly="True" SortMemberPath="DateDemSort"/>
-        <DataGridTextColumn Header="RESDem"      Binding="{Binding ResDem}"     Width="80"  IsReadOnly="True"/>
-        <!-- Cases oui/non PVA_RES_DEM_* de la maquette RES (lecture seule) -->
-        <DataGridCheckBoxColumn Header="DemNouv"  Binding="{Binding DemNouveau, Mode=OneWay}"  Width="50" IsReadOnly="True" SortMemberPath="DemNouveau"/>
-        <DataGridCheckBoxColumn Header="DemModif" Binding="{Binding DemModifie, Mode=OneWay}"  Width="52" IsReadOnly="True" SortMemberPath="DemModifie"/>
-        <DataGridCheckBoxColumn Header="DemSuppr" Binding="{Binding DemSupprime, Mode=OneWay}" Width="52" IsReadOnly="True" SortMemberPath="DemSupprime"/>
-        <DataGridTextColumn Header="Responsable" Binding="{Binding ResResp}"    Width="90"  IsReadOnly="True"/>
-        <DataGridTextColumn Header="Detail"      Binding="{Binding Detail}"     Width="*"   IsReadOnly="True"/>
+        <!-- Bloc RES : 9 colonnes -->
+        <DataGridTextColumn Binding="{Binding RNum}"       Width="92"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
+        <DataGridTextColumn Binding="{Binding RFamille}"   Width="125" IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
+        <DataGridTextColumn Binding="{Binding RNiveau}"    Width="70"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
+        <DataGridTextColumn Binding="{Binding RDemandeur}" Width="76"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
+        <DataGridTextColumn Binding="{Binding RDateDem}"   Width="76"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}" SortMemberPath="DateDemSort"/>
+        <DataGridTextColumn Binding="{Binding ValStatut}"  Width="78"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}" FontWeight="SemiBold"/>
+        <DataGridTextColumn Binding="{Binding ValDate}"    Width="76"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}" SortMemberPath="ValDateSort"/>
+        <DataGridTextColumn Binding="{Binding ValComment}" Width="120" IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
+        <DataGridTextColumn Binding="{Binding RMarques}"   Width="78"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
+        <!-- Bloc ecart et action : 5 colonnes -->
+        <DataGridCheckBoxColumn x:Name="col_sel" Binding="{Binding IsSelected, Mode=TwoWay}"
+                                Width="34" IsReadOnly="False" SortMemberPath="IsSelected" HeaderStyle="{StaticResource HdrMid}"/>
+        <!-- Voyant de geometrie : un clic ouvre le detail -->
+        <DataGridTemplateColumn x:Name="col_geom" Width="50" IsReadOnly="True"
+                                SortMemberPath="GeomTri" HeaderStyle="{StaticResource HdrMid}">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate>
+              <Border Background="Transparent" ToolTip="{Binding GeomTip}" Cursor="Hand">
+                <Ellipse Width="13" Height="13" Fill="{Binding GeomCouleur}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+        <DataGridTextColumn Binding="{Binding Ecart}"      Width="140" IsReadOnly="True" HeaderStyle="{StaticResource HdrMid}" FontWeight="SemiBold" SortMemberPath="Statut"/>
+        <DataGridTextColumn Binding="{Binding Action}"     Width="155" IsReadOnly="True" HeaderStyle="{StaticResource HdrMid}"/>
+        <DataGridTextColumn Binding="{Binding Detail}"     Width="*" MinWidth="170" IsReadOnly="True" HeaderStyle="{StaticResource HdrMid}" ElementStyle="{StaticResource TipDetail}"/>
+        <!-- Bloc STR : 5 colonnes -->
+        <DataGridTextColumn Binding="{Binding SNum}"        Width="92"  IsReadOnly="True" HeaderStyle="{StaticResource HdrStr}"/>
+        <DataGridTextColumn Binding="{Binding SVal}"        Width="78"  IsReadOnly="True" HeaderStyle="{StaticResource HdrStr}" FontWeight="SemiBold"/>
+        <DataGridTextColumn Binding="{Binding SValDate}"    Width="76"  IsReadOnly="True" HeaderStyle="{StaticResource HdrStr}" SortMemberPath="SValDateSort"/>
+        <DataGridTextColumn Binding="{Binding SValComment}" Width="120" IsReadOnly="True" HeaderStyle="{StaticResource HdrStr}"/>
+        <DataGridTextColumn Binding="{Binding SId}"         Width="72"  IsReadOnly="True" HeaderStyle="{StaticResource HdrStr}"/>
       </DataGrid.Columns>
     </DataGrid>
 
     <!-- Footer -->
-    <Border Grid.Row="4" BorderThickness="0,1,0,0" BorderBrush="#C0D0E0"
+    <Border Grid.Row="5" BorderThickness="0,1,0,0" BorderBrush="#C0D0E0"
             Background="#F5F5F5" Padding="0,5">
       <Grid Margin="8,0">
         <TextBlock x:Name="footer_label"
@@ -1947,16 +2176,21 @@ XAML = """
 </Window>
 """
 
-# Liste des en-tetes colonnes (ordre identique aux colonnes XAML)
-# Index 0 = checkbox, puis : VAL group, puis STR group
+# Nombre de colonnes de chaque bloc, dans l'ordre du XAML : RES, ecart, STR.
+# Sert a caler le bandeau des trois blocs sur les colonnes.
+GROUPES_COLONNES = (9, 5, 5)
+
+# En-tetes des colonnes (ordre identique aux colonnes XAML)
 COLUMN_HEADERS = [
-    HDR_SEL,
-    HDR_VAL_STATUT, HDR_VAL_DATE, HDR_VAL_COMMENT,
-    HDR_STATUT, HDR_NUM, HDR_FAMILLE, HDR_NIVEAU,
-    HDR_DEMANDEUR, HDR_DATE_DEM, HDR_RES_DEM,
-    HDR_DEM_NOUV, HDR_DEM_MODIF, HDR_DEM_SUPPR, HDR_RES_RESP,
-    HDR_DETAIL
+    # Bloc RES
+    u"N° réservation", u"Famille", u"Niveau", u"Demandeur", u"Date dem.",
+    u"Statut VAL", u"Date VAL", u"Commentaire VAL", u"Marques",
+    # Bloc ecart et action
+    u"", u"Géom.", u"Écart", u"Action à la synchro", u"Différences",
+    # Bloc STR
+    u"N° réservation", u"Statut VAL", u"Date VAL", u"Commentaire VAL", u"Id STR",
 ]
+
 
 
 def _count_val_statuts(rows):
@@ -2067,7 +2301,7 @@ def _populate_statut_combos(window, state):
     keys    = sorted(counts.keys(), key=lambda k: (order.get(k, 9), k))
     entries = [(None, LBL_F_ALL.format(len(rows)))]
     for k in keys:
-        entries.append((k, _label_for(k, counts[k])))
+        entries.append((k, _label_for(ECART_LABELS.get(k, k), counts[k])))
     _fill_combo(cb_stat, entries, _combo_tag(cb_stat))
 
 
@@ -2108,6 +2342,7 @@ def _apply_filter(window, state):
     f_stat   = _combo_tag(window.FindName("cb_statut"))
     txt      = (window.FindName("tb_search").Text or u"").strip().lower()
     only_act = (window.FindName("chk_actionnable").IsChecked == True)
+    only_geo = (window.FindName("chk_geom").IsChecked == True)
 
     view = []
     for r in rows:
@@ -2118,6 +2353,8 @@ def _apply_filter(window, state):
         if f_stat is not None and r.Statut != f_stat:
             continue
         if only_act and not r.IsSelectable:
+            continue
+        if only_geo and r.GeomTri > 1:
             continue
         if txt and txt not in r.SearchBlob:
             continue
@@ -2159,6 +2396,8 @@ def _reload_grid(window, state, link_name):
     window.FindName("lbl_val_stat").Text = LBL_VAL_STAT.format(
         sum(1 for r in rows if r.Statut == STATUT_VAL))
     window.FindName("lbl_ok").Text       = LBL_OK_STAT.format(state["nb_ok"])
+    window.FindName("lbl_geom").Text     = LBL_GEOM_STAT.format(
+        sum(1 for r in rows if r.GeomTri == 0), sum(1 for r in rows if r.GeomTri == 1))
     window.FindName("lbl_str_seul").Text = LBL_STR_STAT.format(state["nb_str_seul"])
     window.FindName("lbl_total").Text    = LBL_TOTAL_STAT.format(
         state["nb_link_total"], state["nb_host_total"])
@@ -2187,6 +2426,27 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
     window.FindName("btn_check_all").Content  = LBL_BTN_CHECK_ALL
     window.FindName("btn_uncheck_all").Content = LBL_BTN_UNCHECK
     window.FindName("btn_view3d").Content     = LBL_BTN_VIEW3D
+    window.FindName("lbl_b_res").Text         = LBL_BAND_RES
+    window.FindName("lbl_b_mid").Text         = LBL_BAND_MID
+    window.FindName("lbl_b_str").Text         = LBL_BAND_STR
+
+    # Bandeau des trois blocs : sa largeur suit celle des colonnes du tableau,
+    # y compris quand l'utilisateur les redimensionne.
+    band = window.FindName("band")
+
+    def _sync_band(s=None, e=None):
+        try:
+            cols, debut = [c for c in dg.Columns], 0
+            for k, nb in enumerate(GROUPES_COLONNES):
+                largeur = sum(c.ActualWidth for c in cols[debut:debut + nb])
+                debut += nb
+                cdef = band.ColumnDefinitions[k]
+                if abs(cdef.Width.Value - largeur) > 0.5:
+                    cdef.Width = System.Windows.GridLength(largeur)
+        except Exception:
+            pass
+
+    dg.LayoutUpdated += _sync_band
 
     # Libelles de la barre de filtres (accents via Python)
     window.FindName("lbl_f_title").Text        = LBL_F_TITLE
@@ -2195,6 +2455,8 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
     window.FindName("lbl_f_stat").Text         = LBL_F_STAT
     window.FindName("lbl_f_txt").Text          = LBL_F_TXT
     window.FindName("chk_actionnable").Content = LBL_F_ACT
+    window.FindName("chk_geom").Content        = LBL_F_GEOM
+    window.FindName("chk_geom").ToolTip        = TIP_F_GEOM
     window.FindName("btn_reset").Content       = LBL_BTN_RESET
     window.FindName("cb_val_date").ToolTip     = TIP_DATE
     window.FindName("tb_search").ToolTip       = TIP_SEARCH
@@ -2236,6 +2498,16 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
     # sur la colonne des cases et on bascule la valeur nous-memes. Si la ligne
     # cliquee fait partie d'une selection multiple, toute la selection suit.
     # -------------------------------------------------------------------------
+    col_sel  = window.FindName("col_sel")
+    col_geom = window.FindName("col_geom")
+
+    def _montrer_geometrie(item):
+        System.Windows.MessageBox.Show(
+            window, item.GeomDetail, u"Géométrie STR / RES",
+            System.Windows.MessageBoxButton.OK,
+            System.Windows.MessageBoxImage.Warning if item.GeomTri < 2
+            else System.Windows.MessageBoxImage.Information)
+
     def _basculer(items, valeur):
         for r in items:
             if r.IsSelectable:
@@ -2265,7 +2537,17 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
     def on_grid_click(s, e):
         try:
             cell = _cellule_sous_souris(e.OriginalSource)
-            if cell is None or cell.Column is None or cell.Column.DisplayIndex != 0:
+            if cell is None:
+                return
+            if cell.Column is col_geom:
+                # Detail du voyant, affiche une fois le clic termine. Le clic
+                # n'est pas consomme : la ligne se selectionne normalement.
+                vu = cell.DataContext
+                if getattr(vu, "GeomDetail", u""):
+                    window.Dispatcher.BeginInvoke(
+                        System.Action(lambda: _montrer_geometrie(vu)))
+                return
+            if cell.Column is not col_sel:
                 return
             item = cell.DataContext
             if not hasattr(item, "IsSelectable"):
@@ -2322,6 +2604,7 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
         try:
             window.FindName("tb_search").Text              = u""
             window.FindName("chk_actionnable").IsChecked   = False
+            window.FindName("chk_geom").IsChecked          = False
             window.FindName("cb_val_statut").SelectedIndex = 0
             window.FindName("cb_statut").SelectedIndex     = 0
             # Repeupler AVANT de remettre l'index a 0 : _populate_date_combo
@@ -2338,6 +2621,8 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
     window.FindName("tb_search").TextChanged          += on_filter_changed
     window.FindName("chk_actionnable").Checked        += on_filter_changed
     window.FindName("chk_actionnable").Unchecked      += on_filter_changed
+    window.FindName("chk_geom").Checked               += on_filter_changed
+    window.FindName("chk_geom").Unchecked             += on_filter_changed
     window.FindName("btn_reset").Click                += on_reset
 
     # -------------------------------------------------------------------------
@@ -2466,7 +2751,7 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
         try:
             lines = [LBL_CSV_HEADER]
             for r in export_rows:
-                lines.append(u"{};{};{};{};{};{};{};{};{};{};{};{};{};{};{}".format(
+                lines.append(u";".join([u"{}"] * 23).format(
                     r.ValStatut, r.Statut, r.Num, r.Famille, r.Niveau,
                     r.Demandeur, r.DateDem,
                     r.ResDem,
@@ -2475,7 +2760,9 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
                     u"Oui" if r.DemSupprime else u"Non",
                     r.ResResp,
                     r.ValDate, r.ValComment,
-                    r.Detail.replace(";", " /")
+                    r.Detail.replace(";", " /"),
+                    r.Ecart, r.Action, r.SNum, r.SVal, r.SValDate,
+                    r.SValComment.replace(";", " /"), r.SId, r.GeomTexte
                 ))
             with io.open(csv_path, 'w', encoding='utf-8-sig') as f:
                 f.write(u"\n".join(lines))
@@ -2515,6 +2802,11 @@ def run():
         return
 
     link_name  = link_instance.Name
+    try:
+        _GEOM_CTX["transform"] = link_instance.GetTotalTransform()
+    except Exception:
+        _GEOM_CTX["transform"] = None
+    _GEOM_CTX["cache"] = {}
     host_elems = collect_host_reservations()
     link_elems = collect_link_reservations(link_instance)
 
