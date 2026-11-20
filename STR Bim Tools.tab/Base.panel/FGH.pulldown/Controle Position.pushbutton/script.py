@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "1.0.0"
+SCRIPT_VERSION = "1.0.1"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = u"Contrôle Position Réservations"
 # =============================================================================
@@ -117,12 +117,17 @@ try:
           V_DEPVOL: "#F5C6CB", V_NM: "#E2E3E5"}
     ORDRE = {V_DEPVOL: 0, V_DEP: 1, V_VOL: 2, V_NM: 3, V_OK: 4}
 
-    F_ECARTS, F_TOUT, F_DEP, F_VOL, F_NM, F_OK = range(6)
-    FILTRES = [u"Écarts seulement", u"Tout afficher", u"Déplacées",
+    F_ECARTS, F_ADN, F_REPLI, F_TOUT, F_DEP, F_VOL, F_NM, F_OK = range(8)
+    FILTRES = [u"Écarts seulement", u"Écarts — ADN identique",
+               u"Écarts — repli N° + maquette", u"Tout afficher", u"Déplacées",
                u"Volumétrie différente", u"Non mesurables", u"Conformes"]
 
-    APP_ADN   = u"ADN"
-    APP_RESOU = u"Resoumission"
+    # Mode d'appariement, affiche sur chaque ligne : un ecart n'a pas le meme sens
+    # selon que l'ADN est identique (meme soumission, donc deplacement reel) ou que
+    # la paire vient du repli (ADN refige : la reservation a ete resoumise, un
+    # ecart est attendu et se traite dans Sync Reservations).
+    APP_ADN   = u"ADN identique"
+    APP_RESOU = u"Repli N° + maquette"
 
     _PREFS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prefs.json")
 
@@ -435,7 +440,11 @@ try:
         """Une reservation presente des deux cotes."""
         def __init__(self, e_host, e_link, mode, transform):
             self._host = e_host
-            self.Num   = _p_str(e_link, PARAM_NUM) or _p_str(e_host, PARAM_NUM)
+            self.NumStr = _p_str(e_host, PARAM_NUM)
+            self.NumSpv = _p_str(e_link, PARAM_NUM)
+            self.Num    = self.NumSpv or self.NumStr
+            self.AdnStr = _adn_key(e_host)
+            self.AdnSpv = _adn_key(e_link)
             self.Fam   = _family_name(e_host)
             self.Niv   = _p_str(e_link, PARAM_NIVEAU)
             self.Val   = _p_str(e_link, PARAM_VAL_STATUT)
@@ -508,6 +517,15 @@ try:
                 if self.Approx:
                     parts.append(u"mesure approchée (boîte englobante, pas de solide lisible)")
                 self.Detail = u" | ".join(parts)
+            # Indices d'un mauvais appariement, en tete du detail
+            alertes = []
+            if self.NumStr != self.NumSpv:
+                alertes.append(u"N° STR [{}] ≠ N° SPV [{}]".format(self.NumStr, self.NumSpv))
+            if self.App == APP_RESOU and self.Verdict != V_OK:
+                alertes.append(u"ADN refigé : réservation resoumise, à traiter dans Sync "
+                               u"Reservations")
+            if alertes:
+                self.Detail = u" | ".join(alertes + ([self.Detail] if self.Detail else []))
             self.RowBg = BG[self.Verdict]
             self.Tri   = ORDRE[self.Verdict]
 
@@ -707,7 +725,9 @@ try:
         (u"Δ volume (%)", "DVol", 12), (u"Recouvrement (%)", "Recouv", 14),
         (u"Famille", "Fam", 24), (u"Niveau", "Niv", 16),
         (u"Statut VAL", "Val", 14), (u"Marque SPV", "Marque", 16),
-        (u"Demandeur", "Dem", 16), (u"Appariement", "App", 14),
+        (u"Demandeur", "Dem", 16), (u"Appariement", "App", 20),
+        (u"N° STR", "NumStr", 16), (u"N° SPV", "NumSpv", 16),
+        (u"ADN STR", "AdnStr", 70), (u"ADN SPV", "AdnSpv", 70),
         (u"Épinglée", "Epingle", 10), (u"Mesure approchée", "Approx", 12),
         (u"Détail", "Detail", 70),
         (u"Id STR", "IdStr", 12), (u"Id SPV", "IdSpv", 12),
@@ -830,6 +850,7 @@ try:
       <DataGrid.Columns>
         <DataGridTextColumn x:Name="c_ver" Binding="{Binding Verdict}" Width="150" SortMemberPath="Tri"/>
         <DataGridTextColumn x:Name="c_num" Binding="{Binding Num}"     Width="95"/>
+        <DataGridTextColumn x:Name="c_app" Binding="{Binding App}"     Width="130"/>
         <DataGridTextColumn x:Name="c_eca" Binding="{Binding EcartT}"  Width="80" SortMemberPath="EcartS"/>
         <DataGridTextColumn x:Name="c_dx"  Binding="{Binding DXT}"     Width="62" SortMemberPath="DXS"/>
         <DataGridTextColumn x:Name="c_dy"  Binding="{Binding DYT}"     Width="62" SortMemberPath="DYS"/>
@@ -882,6 +903,7 @@ try:
         win.FindName("lbl_footer").Text = _FOOTER
 
         for nm, txt in ((u"c_ver", u"Verdict"), (u"c_num", u"N° réservation"),
+                        (u"c_app", u"Appariement"),
                         (u"c_eca", u"Écart (cm)"), (u"c_dx", u"ΔX"), (u"c_dy", u"ΔY"),
                         (u"c_dz", u"ΔZ"), (u"c_dd", u"Δ dim. (cm)"),
                         (u"c_dv", u"Δ vol. (%)"), (u"c_rec", u"Recouvr. (%)"),
@@ -954,9 +976,13 @@ try:
                     u"ou son point de base qui a bougé, pas les réservations une à une : à "
                     u"vérifier avant tout recalage.".format(d[3], d[4], d[0], d[1], d[2]))
             elif ecarts:
+                e_adn = len([r for r in rows if r.App == APP_ADN
+                             and r.Verdict in (V_DEP, V_VOL, V_DEPVOL)])
                 win.FindName("lbl_r3").Text = (
-                    u"⚠ {} réservation(s) en écart que la synchronisation ne voit pas.".format(
-                        ecarts))
+                    u"⚠ {} réservation(s) en écart : {} avec un ADN identique des deux côtés "
+                    u"(même soumission, la synchronisation ne les voit pas), {} appariée(s) "
+                    u"par repli N° + maquette (ADN refigé, resoumission à traiter dans Sync "
+                    u"Reservations).".format(ecarts, e_adn, ecarts - e_adn))
             else:
                 win.FindName("lbl_r3").Text = u""
             return c
@@ -967,7 +993,11 @@ try:
             out = []
             for r in rows:
                 v = r.Verdict
-                if f == F_ECARTS and v in (V_OK, V_NM):
+                if f in (F_ECARTS, F_ADN, F_REPLI) and v in (V_OK, V_NM):
+                    continue
+                if f == F_ADN and r.App != APP_ADN:
+                    continue
+                if f == F_REPLI and r.App != APP_RESOU:
                     continue
                 if f == F_DEP and v not in (V_DEP, V_DEPVOL):
                     continue
@@ -978,8 +1008,9 @@ try:
                 if f == F_OK and v != V_OK:
                     continue
                 if q:
-                    blob = u" ".join([r.Num, r.Fam, r.Niv, r.Val, r.Dem, r.Marque,
-                                      r.IdStr, r.IdSpv, r.Verdict]).lower()
+                    blob = u" ".join([r.NumStr, r.NumSpv, r.Fam, r.Niv, r.Val, r.Dem,
+                                      r.Marque, r.IdStr, r.IdSpv, r.Verdict, r.App,
+                                      r.AdnStr, r.AdnSpv]).lower()
                     if q not in blob:
                         continue
                 out.append(r)
@@ -1117,6 +1148,10 @@ try:
                     (u"   Volumétrie différente", u"{}".format(c[V_VOL])),
                     (u"   Déplacées + volumétrie", u"{}".format(c[V_DEPVOL])),
                     (u"   Non mesurables", u"{}".format(c[V_NM])),
+                    (u"   Appariées par ADN identique", u"{}".format(
+                        len([r for r in rows if r.App == APP_ADN]))),
+                    (u"   Appariées par repli N° + maquette (ADN refigé)", u"{}".format(
+                        len([r for r in rows if r.App == APP_RESOU]))),
                     (u"", u""),
                     (u"Présentes dans le lien seulement (hors contrôle)",
                      u"{}".format(nb_lien_seul)),

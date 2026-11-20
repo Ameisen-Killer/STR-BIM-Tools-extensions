@@ -1,5 +1,5 @@
 title: "Contrôle\nPosition"
 tooltip: "Compare la position et la volumétrie des réservations entre la maquette STR et le lien SPV."
 author: Tony VARIN
-version: 1.0.0
+version: 1.0.1
 min_revit_ver: 2024
