@@ -18,7 +18,7 @@
 # (audit du 13.08.2026 : 2 ADN en doublon sur 5014, contre 169 N° en
 # doublon). Le UniqueId Revit voyage avec : il departage un ADN en doublon et
 # revele une reservation resoumise (meme element, ADN refige) ou un ADN
-# raccourci par « Nettoyer Control ». L'ElementId n'est qu'indicatif.
+# raccourci par l'ancien outil « Nettoyer Control » (retire le 20.11.2026). L'ElementId n'est qu'indicatif.
 #
 # Compatible IronPython 2.7 (Revit 2024) et 3.4 (Revit 2025+).
 # =============================================================================
