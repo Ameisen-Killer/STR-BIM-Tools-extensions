@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "3.8.1"
+SCRIPT_VERSION = "3.9.0"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Reservations RES vs STR"
 # =============================================================================
@@ -157,7 +157,7 @@ ECART_LABELS = {
 # Ce que fera « Synchroniser » sur la ligne (colonne « Action »), par cas
 ACTION_LABELS = {
     "A": u"Copier dans la STR",
-    "B": u"Remplacer dans la STR",
+    "B": u"Mettre à jour les paramètres",
     "C": u"Marquer supprimée",
     "D": u"Marquer supprimée",
     "E": u"Reprendre la validation",
@@ -166,6 +166,7 @@ ACTION_LABELS = {
 ACTION_COULEURS = {"A": "#DFF0D8", "B": "#FFF3CD", "C": "#FFD9A0",
                    "D": "#FFD9A0", "E": "#D6EAF8", "F": "#F8C9C4"}
 LBL_SANS_ACTION_ATT = u"Aucune (déjà ATTENTION)"
+LBL_SANS_ACTION_GEO = u"Aucune (géométrie non mesurable)"
 LBL_SANS_ACTION_NV  = u"Aucune (non validée)"
 LBL_SANS_ACTION_SUP = u"Aucune (supprimée dans la RES)"
 LBL_SANS_ACTION     = u"Aucune"
@@ -273,12 +274,15 @@ LBL_CSV_ERR     = u"Erreur export CSV :\n{}"
 MSG_CONFIRM_SYNC = (
     u"Synchronisation : {} élément(s) à traiter\n\n"
     u"  • Cas A - Nouveaux à copier            : {}\n"
-    u"  • Cas B - Modifiés à mettre à jour      : {}\n"
+    u"  • Cas B - Paramètres à mettre à jour    : {}\n"
     u"  • Cas C - à marquer supprimés          : {}\n"
     u"  • Cas D - Validation retirée/refusée  : {}\n"
     u"  • Cas E - Statut VAL à reprendre        : {}\n"
     u"  • Cas F - Géométrie différente            : {}\n\n"
-    u"Seules les réservations VALID sont copiées.\n"
+    u"Seules les réservations VALID absentes de la STR sont copiées.\n"
+    u"Les Cas B (même position, même volumétrie) reçoivent tous les paramètres "
+    u"de la maquette RES sur la réservation en place : ni copie ni suppression, "
+    u"les cotes sont conservées.\n"
     u"Les Cas D seront marqués Supprimé dans la STR.\n"
     u"Les Cas E reçoivent le statut, la date et le commentaire de validation "
     u"de la maquette RES, sans copie ni déplacement.\n"
@@ -290,13 +294,12 @@ MSG_CONFIRM_SYNC = (
 MSG_SYNC_RESULT = (
     u"Synchronisation terminée :\n\n"
     u"  Cas A - Nouveaux copiés              : {}\n"
-    u"  Cas B - Modifiés copiés              : {}\n"
-    u"  Cas B - Anciennes supprimées         : {}\n"
+    u"  Cas B - Paramètres mis à jour        : {}\n"
     u"  Cas C - Marqués supprimés            : {}\n"
     u"  Cas D - Invalides marqués supprimés  : {}\n"
     u"  Cas E - Statuts VAL repris           : {}\n"
     u"  Cas F - Passés en ATTENTION          : {}\n\n"
-    u"Total copiés : {}  |  Total marqués : {}"
+    u"Total copiés : {}  |  Total marqués supprimés : {}"
 )
 MSG_SYNC_ERR    = u"Erreur lors de la synchronisation :\n\n{}"
 MSG_NOTHING     = u"Aucun élément à synchroniser dans la sélection (ABSENT, DIFFERENT, INVALIDE, STATUT VAL ou écart de géométrie attendus)."
@@ -385,7 +388,7 @@ def collect_host_reservations():
     """
     Collecte les FamilyInstance FGH_RES* de la maquette hote.
     Exclusion : elements dont PVA_RES_VAL_Statut == 'SUPPRIMEE'
-    (marques par l'outil Sync en Cas B/C/D).
+    (marques par l'outil Sync en Cas C/D, Cas B avant la 3.9.0).
     """
     result = []
     for e in FilteredElementCollector(doc).OfClass(FamilyInstance).ToElements():
@@ -777,7 +780,7 @@ def apparier(host_elems, link_elems):
     Apparie les reservations du lien et de la STR.
     1. ADN identique — cas normal.
     2. Repli : meme partie stable (N° + maquette) avec un ADN different, et une
-       seule candidate de chaque cote -> percement resoumis, a traiter en Cas B.
+       seule candidate de chaque cote -> percement resoumis, a traiter en Cas B ou F.
     Retourne (link_by_adn, paires {adn: e_host}, hotes_non_apparies).
     """
     _reset_match_report()
@@ -1129,6 +1132,10 @@ def _finaliser_row(row):
     if row._host_elem is not None and row._link_elem is not None \
             and (row.GeomPos or row.GeomVol):
         row.Action = LBL_SANS_ACTION_ATT
+    elif row.Statut == STATUT_DIFF and row._host_elem is not None \
+            and row._link_elem is not None and row.GeomTri != 3 \
+            and _get_param_int(row._link_elem, PARAM_SUPPRIME) != 1:
+        row.Action = LBL_SANS_ACTION_GEO
     elif row.Statut == STATUT_OK:
         row.Action = u""
     elif row.Statut == STATUT_ABSENT and row._link_elem is not None \
@@ -1152,7 +1159,7 @@ def _is_statut_valide(link_element):
 
 # Constantes de classification des cas
 CAS_A = "A"   # nouveau a copier
-CAS_B = "B"   # modifie a mettre a jour (copie + ancien marque supprime)
+CAS_B = "B"   # meme geometrie, parametres differents : mise a jour sur place
 CAS_C = "C"   # marquer local supprime (annulation demandeur)
 CAS_D = "D"   # validation retiree/refusee apres integration
 CAS_E = "E"   # reprise du statut, de la date et du commentaire de validation
@@ -1194,32 +1201,37 @@ def _classify_row(row):
             return CAS_E
         return CAS_NONE
 
-    # Cas A/B/C necessitent ABSENT ou DIFFERENT + lien valide
     if row.Statut not in (STATUT_ABSENT, STATUT_DIFF):
         return CAS_NONE
     if e_link is None:
         return CAS_NONE
-    if not _is_statut_valide(e_link):
-        # DIFFERENT non valide : ni copie ni remplacement, mais la STR ne doit
-        # pas garder un statut que la RES n'a plus (VALIDE devenu A REVOIR)
-        if row.Statut == STATUT_DIFF and e_host is not None and row.ValDiff:
-            return CAS_E
-        return CAS_NONE
 
+    valide        = _is_statut_valide(e_link)
     supprime_lien = _get_param_int(e_link, PARAM_SUPPRIME)
-    modifie_lien  = _get_param_int(e_link, PARAM_MODIFIE)
 
+    # Cas A : absente de la STR -> copiee seulement si VALIDE et non supprimee
     if row.Statut == STATUT_ABSENT:
-        if supprime_lien != 1:
+        if valide and supprime_lien != 1:
             return CAS_A
         return CAS_NONE
 
-    # row.Statut == STATUT_DIFF
-    if supprime_lien == 1 and e_host is not None:
-        return CAS_C
-    if modifie_lien == 1 and e_host is not None:
+    # row.Statut == STATUT_DIFF : deja dans la STR, parametres de demande differents
+    if e_host is None:
+        return CAS_NONE
+    if supprime_lien == 1:
+        if valide:
+            return CAS_C
+        return CAS_E if row.ValDiff else CAS_NONE
+    # Cas B : position et volumetrie mesurees identiques -> tous les parametres
+    # sont repris sur la reservation en place, sans suppression ni recopie, pour
+    # ne pas perdre la cotation (decision Tony 20.11.2026). Avant la 3.9.0 ce
+    # cas remplacait l'objet, ou le copiait en double si la RES n'avait pas
+    # coche « Modifie ».
+    if row.GeomTri == 3:
         return CAS_B
-    return CAS_A
+    # Geometrie non mesurable : on ne touche pas aux dimensions ; seule la
+    # validation est reprise
+    return CAS_E if row.ValDiff else CAS_NONE
 
 
 def _find_workset_id(workset_name):
@@ -1686,7 +1698,7 @@ def _mark_as_new(elements):
 
 def _mark_as_deleted(elements):
     """
-    Cas B (ancien), Cas C, Cas D : marque l'element STR comme supprime.
+    Cas C, Cas D : marque l'element STR comme supprime.
     Ecrit 'SUPPRIMEE' dans PVA_RES_VAL_Statut — c'est ce statut que
     collect_host_reservations() utilise pour exclure ces elements a la prochaine synchro.
     Ecrit aussi la date dans PVA_RES_DEM_Commentaire pour la tracabilite.
@@ -1737,6 +1749,21 @@ def _update_val_params(pairs):
     return count
 
 
+def _update_all_params(pairs):
+    """
+    Cas B : reporte tous les parametres d'occurrence du lien sur l'element STR
+    en place (memes regles que apres une copie : _transfer_all_instance_params).
+    L'objet n'est ni deplace, ni supprime, ni recopie : son identifiant et les
+    cotes qui s'y accrochent sont conserves. pairs = [(element STR, element du lien)].
+    Retourne le nombre d'elements traites.
+    """
+    count = 0
+    for e_host, e_link in pairs:
+        _transfer_all_instance_params(e_link, e_host)
+        count += 1
+    return count
+
+
 def _mark_attention(elements):
     """
     Cas F : ecrit ATTENTION dans PVA_RES_VAL_Statut de l'element STR. Rien
@@ -1763,18 +1790,19 @@ def _pin_elements(elements):
 def synchronize_reservations(rows, link_instance):
     """
     Execute la synchronisation Cas A / B / C / D / E / F.
+    Cas B : deja dans la STR, meme geometrie, parametres differents
+            → tous les parametres repris sur place, sans copie ni suppression
     Cas D : element present en local + validation retiree/refusee dans le lien
             → marquer local Supprime=1 + vider PVA_RES_VAL_Statut
     Cas E : meme reservation des deux cotes, validation differente
             → statut, date et commentaire VAL repris du lien
     Cas F : presente des deux cotes, position ou volumetrie differente
             → statut ATTENTION dans la STR
-    Retourne (nb_cas_a, nb_cas_b_copies, nb_cas_b_marks, nb_cas_c, nb_cas_d,
+    Retourne (nb_cas_a, nb_cas_b, nb_cas_c, nb_cas_d,
               nb_cas_e, nb_cas_f, workset_not_found, erreur_str)
     """
     cas_a_sources    = []
-    cas_b_sources    = []
-    cas_b_old_locals = []
+    cas_b_pairs      = []
     cas_c_locals     = []
     cas_d_locals     = []
     cas_e_pairs      = []
@@ -1785,8 +1813,7 @@ def synchronize_reservations(rows, link_instance):
         if cas == CAS_A:
             cas_a_sources.append(row._link_elem)
         elif cas == CAS_B:
-            cas_b_sources.append(row._link_elem)
-            cas_b_old_locals.append(row._host_elem)
+            cas_b_pairs.append((row._host_elem, row._link_elem))
         elif cas == CAS_C:
             cas_c_locals.append(row._host_elem)
         elif cas == CAS_D:
@@ -1799,15 +1826,14 @@ def synchronize_reservations(rows, link_instance):
     _reset_remap_report()
 
     nb_cas_a        = 0
-    nb_cas_b_copies = 0
-    nb_cas_b_marks  = 0
+    nb_cas_b        = 0
     nb_cas_c        = 0
     nb_cas_d        = 0
     nb_cas_e        = 0
     nb_cas_f        = 0
 
     workset_id         = _find_workset_id(TARGET_WORKSET_NAME)
-    workset_not_found  = (workset_id is None) and (len(cas_a_sources) + len(cas_b_sources) > 0)
+    workset_not_found  = (workset_id is None) and (len(cas_a_sources) > 0)
 
     try:
         if cas_a_sources:
@@ -1819,14 +1845,9 @@ def synchronize_reservations(rows, link_instance):
                     _assign_to_workset(copied_a, workset_id)
                 nb_cas_a = len(copied_a)
 
-        if cas_b_sources:
+        if cas_b_pairs:
             with revit.Transaction(u"STR - Sync Reservations Cas B"):
-                copied_b = _copy_elements_from_link(link_instance, cas_b_sources)
-                _pin_elements(copied_b)
-                if workset_id is not None:
-                    _assign_to_workset(copied_b, workset_id)
-                nb_cas_b_copies = len(copied_b)
-                nb_cas_b_marks  = _mark_as_deleted(cas_b_old_locals)
+                nb_cas_b = _update_all_params(cas_b_pairs)
 
         if cas_c_locals:
             with revit.Transaction(u"STR - Sync Reservations Cas C"):
@@ -1845,10 +1866,10 @@ def synchronize_reservations(rows, link_instance):
                 nb_cas_f = _mark_attention(cas_f_locals)
 
     except Exception:
-        return (nb_cas_a, nb_cas_b_copies, nb_cas_b_marks, nb_cas_c, nb_cas_d,
+        return (nb_cas_a, nb_cas_b, nb_cas_c, nb_cas_d,
                 nb_cas_e, nb_cas_f, workset_not_found, traceback.format_exc())
 
-    return (nb_cas_a, nb_cas_b_copies, nb_cas_b_marks, nb_cas_c, nb_cas_d,
+    return (nb_cas_a, nb_cas_b, nb_cas_c, nb_cas_d,
             nb_cas_e, nb_cas_f, workset_not_found, None)
 
 
@@ -2885,7 +2906,7 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
         if not confirmed:
             return
 
-        r_a, r_b_cp, r_b_mk, r_c, r_d, r_e, r_f, ws_not_found, err = synchronize_reservations(
+        r_a, r_b, r_c, r_d, r_e, r_f, ws_not_found, err = synchronize_reservations(
             selected, link_instance
         )
 
@@ -2895,8 +2916,8 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
 
         # Construire le message de resultat avec avertissement eventuel
         result_msg = MSG_SYNC_RESULT.format(
-            r_a, r_b_cp, r_b_mk, r_c, r_d, r_e, r_f,
-            r_a + r_b_cp, r_b_mk + r_c + r_d
+            r_a, r_b, r_c, r_d, r_e, r_f,
+            r_a, r_c + r_d
         )
         if ws_not_found:
             result_msg += u"\n\n" + MSG_WORKSET_NOT_FOUND.format(TARGET_WORKSET_NAME)
