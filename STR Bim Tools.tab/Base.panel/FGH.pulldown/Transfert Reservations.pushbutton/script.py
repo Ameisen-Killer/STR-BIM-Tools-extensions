@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "3.7.3"
+SCRIPT_VERSION = "3.7.4"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Reservations RES vs STR"
 # =============================================================================
@@ -167,14 +167,16 @@ LBL_SANS_ACTION_NV  = u"Aucune (non validée)"
 LBL_SANS_ACTION_SUP = u"Aucune (supprimée dans la RES)"
 LBL_SANS_ACTION     = u"Aucune"
 
-# Voyant de geometrie (colonne « Géom. ») : position et volumetrie reelles de la
-# reservation, mesurees des deux cotes. Rouge = decalee, orange = volumetrie
-# differente, vert = conforme, gris = non mesurable, rien = un seul cote.
+# Voyants de geometrie (colonnes « Pos. » et « Vol. ») : position et volumetrie
+# reelles de la reservation, mesurees des deux cotes. Pos. : rouge = decalee.
+# Vol. : orange = volumetrie differente. Vert = conforme, gris = non mesurable,
+# rien = un seul cote. Les deux voyants sont independants : une reservation
+# decalee ET de volumetrie differente compte dans les deux.
 GEOM_ROUGE, GEOM_ORANGE, GEOM_VERT, GEOM_GRIS = "#E74C3C", "#F39C12", "#2ECC71", "#BDC3C7"
 LBL_GEOM_STAT   = u"● Géométrie : {} décalée(s)  |  {} volumétrie différente"
 LBL_F_GEOM      = u"Écarts de géométrie"
-TIP_F_GEOM      = (u"N'affiche que les réservations au voyant rouge (décalée) ou orange "
-                   u"(volumétrie différente)")
+TIP_F_GEOM      = (u"N'affiche que les réservations au voyant Pos. rouge (décalée) ou "
+                   u"au voyant Vol. orange (volumétrie différente)")
 LBL_GEOM_PIED   = (u"\n\nTolérances : position {:g} cm, dimension {:g} cm, volume {:g} %.\n"
                    u"Écarts lus dans le repère de la maquette STR, RES − STR.\n"
                    u"Vue 3D des deux positions et recalage : outil « Contrôle Position ».")
@@ -647,8 +649,15 @@ class ReservationRow(object):
         self.Ecart  = ECART_LABELS.get(statut, statut)
         self.Action = u""
         # Voyant de geometrie : pose par _mesurer_geometrie pour les paires
-        self.GeomCouleur = "Transparent"
+        self.GeomPosCouleur = "Transparent"
+        self.GeomVolCouleur = "Transparent"
+        self.GeomPosTri  = 9
+        self.GeomVolTri  = 9
+        self.GeomPos     = False      # decalee
+        self.GeomVol     = False      # volumetrie differente
         self.GeomTri     = 9
+        self.GeomPosTip  = u""
+        self.GeomVolTip  = u""
         self.GeomTip     = u""
         self.GeomDetail  = u""
         self.GeomTexte   = u""
@@ -1035,9 +1044,11 @@ def _mesurer_geometrie(row):
         c = None
 
     if c is None:
-        row.GeomCouleur, row.GeomTri = GEOM_GRIS, 2
+        row.GeomPosCouleur = row.GeomVolCouleur = GEOM_GRIS
+        row.GeomTri = row.GeomPosTri = row.GeomVolTri = 2
         row.GeomTexte = u"Non mesurable"
         row.GeomTip = row.GeomDetail = u"Géométrie illisible d'un des deux côtés."
+        row.GeomPosTip = row.GeomVolTip = row.GeomTip
         return
 
     lignes = [u"Réservation {}".format(row.Num or row.SNum or u"(sans N°)"), u""]
@@ -1062,18 +1073,33 @@ def _mesurer_geometrie(row):
         fgh_res_geom.TOL_POSITION_CM, fgh_res_geom.TOL_DIMENSION_CM,
         fgh_res_geom.TOL_VOLUME_PCT)
 
-    if c["deplacee"]:
-        row.GeomCouleur, row.GeomTri = GEOM_ROUGE, 0
-        row.GeomTexte = u"Décalée de {:.1f} cm".format(c["ecart"])
-        if c["volumetrie"]:
-            row.GeomTexte += u" + volumétrie différente"
-    elif c["volumetrie"]:
-        row.GeomCouleur, row.GeomTri = GEOM_ORANGE, 1
-        row.GeomTexte = u"Volumétrie différente ({:+.1f} %)".format(c["dvol"])
+    row.GeomPos, row.GeomVol = bool(c["deplacee"]), bool(c["volumetrie"])
+    suite = u" — cliquer pour le détail"
+    if row.GeomPos:
+        row.GeomPosCouleur, row.GeomPosTri = GEOM_ROUGE, 0
+        txt_pos = u"Décalée de {:.1f} cm".format(c["ecart"])
     else:
-        row.GeomCouleur, row.GeomTri = GEOM_VERT, 3
-        row.GeomTexte = u"Conforme"
-    row.GeomTip = row.GeomTexte + (u" — cliquer pour le détail" if row.GeomTri < 3 else u"")
+        row.GeomPosCouleur, row.GeomPosTri = GEOM_VERT, 3
+        txt_pos = u"Position identique"
+    if row.GeomVol:
+        row.GeomVolCouleur, row.GeomVolTri = GEOM_ORANGE, 0
+        txt_vol = u"Volumétrie différente ({:+.1f} %)".format(c["dvol"])
+    else:
+        row.GeomVolCouleur, row.GeomVolTri = GEOM_VERT, 3
+        txt_vol = u"Volumétrie identique"
+    row.GeomPosTip, row.GeomVolTip = txt_pos + suite, txt_vol + suite
+
+    # Synthese : sert au filtre « Écarts de géométrie », a l'export CSV et a
+    # l'icone de la fenetre de detail
+    if row.GeomPos and row.GeomVol:
+        row.GeomTri, row.GeomTexte = 0, txt_pos + u" + volumétrie différente"
+    elif row.GeomPos:
+        row.GeomTri, row.GeomTexte = 0, txt_pos
+    elif row.GeomVol:
+        row.GeomTri, row.GeomTexte = 1, txt_vol
+    else:
+        row.GeomTri, row.GeomTexte = 3, u"Conforme"
+    row.GeomTip = row.GeomTexte + (suite if row.GeomTri < 3 else u"")
 
 
 def _finaliser_row(row):
@@ -2166,16 +2192,27 @@ XAML = """
         <DataGridTextColumn Binding="{Binding RDemandeur}" Width="76"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
         <DataGridTextColumn Binding="{Binding RDateDem}"   Width="76"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}" SortMemberPath="DateDemSort"/>
         <DataGridTextColumn Binding="{Binding RMarques}"   Width="78"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
-        <!-- Bloc ecart et action : 5 colonnes -->
+        <!-- Bloc ecart et action : 6 colonnes -->
         <DataGridCheckBoxColumn x:Name="col_sel" Binding="{Binding IsSelected, Mode=TwoWay}"
                                 Width="34" IsReadOnly="False" SortMemberPath="IsSelected" HeaderStyle="{StaticResource HdrMid}"/>
-        <!-- Voyant de geometrie : un clic ouvre le detail -->
-        <DataGridTemplateColumn x:Name="col_geom" Width="50" IsReadOnly="True"
-                                SortMemberPath="GeomTri" HeaderStyle="{StaticResource HdrMid}">
+        <!-- Voyants de geometrie, position puis volumetrie : un clic ouvre le detail -->
+        <DataGridTemplateColumn x:Name="col_geom_pos" Width="40" IsReadOnly="True"
+                                SortMemberPath="GeomPosTri" HeaderStyle="{StaticResource HdrMid}">
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
-              <Border Background="Transparent" ToolTip="{Binding GeomTip}" Cursor="Hand">
-                <Ellipse Width="13" Height="13" Fill="{Binding GeomCouleur}"
+              <Border Background="Transparent" ToolTip="{Binding GeomPosTip}" Cursor="Hand">
+                <Ellipse Width="13" Height="13" Fill="{Binding GeomPosCouleur}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+        <DataGridTemplateColumn x:Name="col_geom_vol" Width="40" IsReadOnly="True"
+                                SortMemberPath="GeomVolTri" HeaderStyle="{StaticResource HdrMid}">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate>
+              <Border Background="Transparent" ToolTip="{Binding GeomVolTip}" Cursor="Hand">
+                <Ellipse Width="13" Height="13" Fill="{Binding GeomVolCouleur}"
                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Border>
             </DataTemplate>
@@ -2226,7 +2263,7 @@ XAML = """
 
 # Nombre de colonnes de chaque bloc, dans l'ordre du XAML : RES, ecart, STR.
 # Sert a caler le bandeau des trois blocs sur les colonnes.
-GROUPES_COLONNES = (10, 5, 5)
+GROUPES_COLONNES = (10, 6, 5)
 
 # En-tetes des colonnes (ordre identique aux colonnes XAML)
 COLUMN_HEADERS = [
@@ -2234,7 +2271,7 @@ COLUMN_HEADERS = [
     u"N° réservation", u"Statut VAL", u"Date VAL", u"Commentaire VAL", u"Id RES",
     u"Famille", u"Niveau", u"Demandeur", u"Date dem.", u"Marques",
     # Bloc ecart et action
-    u"", u"Géom.", u"Écart", u"Action à la synchro", u"Différences",
+    u"", u"Pos.", u"Vol.", u"Écart", u"Action à la synchro", u"Différences",
     # Bloc STR
     u"N° réservation", u"Statut VAL", u"Date VAL", u"Commentaire VAL", u"Id STR",
 ]
@@ -2445,7 +2482,7 @@ def _reload_grid(window, state, link_name):
         sum(1 for r in rows if r.Statut == STATUT_VAL))
     window.FindName("lbl_ok").Text       = LBL_OK_STAT.format(state["nb_ok"])
     window.FindName("lbl_geom").Text     = LBL_GEOM_STAT.format(
-        sum(1 for r in rows if r.GeomTri == 0), sum(1 for r in rows if r.GeomTri == 1))
+        sum(1 for r in rows if r.GeomPos), sum(1 for r in rows if r.GeomVol))
     window.FindName("lbl_str_seul").Text = LBL_STR_STAT.format(state["nb_str_seul"])
     window.FindName("lbl_total").Text    = LBL_TOTAL_STAT.format(
         state["nb_link_total"], state["nb_host_total"])
@@ -2571,7 +2608,7 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
     # cliquee fait partie d'une selection multiple, toute la selection suit.
     # -------------------------------------------------------------------------
     col_sel  = window.FindName("col_sel")
-    col_geom = window.FindName("col_geom")
+    cols_geom = (window.FindName("col_geom_pos"), window.FindName("col_geom_vol"))
 
     def _montrer_geometrie(item):
         System.Windows.MessageBox.Show(
@@ -2611,8 +2648,8 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
             cell = _cellule_sous_souris(e.OriginalSource)
             if cell is None:
                 return
-            if cell.Column is col_geom:
-                # Detail du voyant, affiche une fois le clic termine. Le clic
+            if cell.Column in cols_geom:
+                # Detail des voyants, affiche une fois le clic termine. Le clic
                 # n'est pas consomme : la ligne se selectionne normalement.
                 vu = cell.DataContext
                 if getattr(vu, "GeomDetail", u""):
