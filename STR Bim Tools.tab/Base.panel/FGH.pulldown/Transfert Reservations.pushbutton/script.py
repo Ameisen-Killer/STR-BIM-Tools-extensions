@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "3.7.1"
+SCRIPT_VERSION = "3.7.2"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Reservations RES vs STR"
 # =============================================================================
@@ -248,9 +248,14 @@ MSG_DOUBLONS = (
     u"Premiers identifiants concernés :\n{}"
 )
 
-MSG_VIEW3D_NONE   = u"Aucune réservation sélectionnée avec un élément local à visualiser."
+MSG_VIEW3D_NONE   = (u"Aucune réservation à visualiser.\n\nSélectionne une ou plusieurs lignes "
+                     u"dans le tableau (Ctrl ou Maj + clic), ou coche-les.")
 MSG_VIEW3D_ERR    = u"Erreur lors de la création de la vue 3D :\n\n{}"
-MSG_VIEW3D_OK     = u"Vue 3D '{}' ouverte avec une zone de coupe autour de {} élément(s)."
+MSG_VIEW3D_OK     = (u"Vue 3D '{}' ouverte : zone de coupe autour de {} réservation(s), "
+                     u"côté STR et côté RES.\n\n{} autre(s) réservation(s) de la STR sont "
+                     u"masquées dans cette vue. Celles du lien RES ne peuvent pas être "
+                     u"masquées une à une : ses voisines restent visibles si elles sont "
+                     u"dans la zone de coupe.")
 MSG_VIEW3D_NOTPL  = u"Gabarit de vue '{}' introuvable.\nLa vue est créée sans gabarit."
 
 LBL_NO_LINK     = u"Aucune maquette liée dont le nom contient '{}' n'a été trouvée.\n\nVérifie que la maquette est chargée."
@@ -1865,12 +1870,53 @@ def _compute_bounding_box(elem_transform_pairs, margin_ft):
     return crop_box
 
 
+def _isoler_reservations(view, garder):
+    """
+    Dans la vue, ne laisse visibles que les reservations STR dont l'Id est dans
+    `garder` : les autres FGH_RES* sont masquees (masquage par element, propre a
+    cette vue de travail), celles a garder sont reaffichees si un appel precedent
+    les avait masquees. A appeler dans une transaction. Retourne le nombre de
+    reservations masquees.
+    """
+    a_masquer  = ClrList[ElementId]()
+    a_afficher = ClrList[ElementId]()
+    for e in FilteredElementCollector(doc).OfClass(FamilyInstance).ToElements():
+        try:
+            if not e.Symbol.Family.Name.startswith(FAMILY_PREFIX):
+                continue
+            if _eid_int(e.Id) in garder:
+                if e.IsHidden(view):
+                    a_afficher.Add(e.Id)
+            elif not e.IsHidden(view) and e.CanBeHidden(view):
+                a_masquer.Add(e.Id)
+        except Exception:
+            pass
+    nb = 0
+    try:
+        if a_afficher.Count:
+            view.UnhideElements(a_afficher)
+        if a_masquer.Count:
+            view.HideElements(a_masquer)
+        # Deja masquees par un appel precedent + masquees maintenant
+        for e in FilteredElementCollector(doc).OfClass(FamilyInstance).ToElements():
+            try:
+                if e.Symbol.Family.Name.startswith(FAMILY_PREFIX) and e.IsHidden(view):
+                    nb += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return nb
+
+
 def open_3d_cropbox(rows, link_instance):
     """
     Ouvre la vue 3D STR_Reservations avec une zone de coupe calculee
-    autour des elements coches.
-    - Si _host_elem existe  : utilise l'element local (STR)
-    - Si _host_elem est None : utilise _link_elem transforme (RES lie)
+    autour des reservations des lignes recues, des DEUX cotes : l'element STR
+    et l'element RES du lien (transforme). Une reservation decalee a ses deux
+    positions dans la zone de coupe.
+    Les autres reservations de la STR sont masquees dans cette vue, pour ne
+    laisser que la structure et les reservations concernees.
     Applique le gabarit de vue VIEW_3D_TEMPLATE (3D_STR+RES).
     Retourne (view_or_None, message_str).
     """
@@ -1882,14 +1928,14 @@ def open_3d_cropbox(rows, link_instance):
 
     # Construire la liste (element, transform_or_None) pour les lignes cochees
     elem_pairs = []
+    garder = set()
     for row in rows:
-        if not row.IsSelected:
-            continue
         if row._host_elem is not None:
             # Element local — pas de transformation necessaire
             elem_pairs.append((row._host_elem, None))
-        elif row._link_elem is not None:
-            # Element absent de STR — utiliser le lien avec sa transformation
+            garder.add(_eid_int(row._host_elem.Id))
+        if row._link_elem is not None:
+            # Element du lien, ramene dans le repere de la STR
             elem_pairs.append((row._link_elem, link_transform))
 
     if not elem_pairs:
@@ -1919,11 +1965,12 @@ def open_3d_cropbox(rows, link_instance):
             # Zone de coupe (SectionBox) uniquement — pas de cadrage
             view.IsSectionBoxActive = True
             view.SetSectionBox(crop_box)
+            nb_masquees = _isoler_reservations(view, garder)
 
         uidoc.ActiveView = view
         uidoc.RequestViewChange(view)
 
-        msg = MSG_VIEW3D_OK.format(VIEW_3D_NAME, len(elem_pairs)) + warn_no_tpl
+        msg = MSG_VIEW3D_OK.format(VIEW_3D_NAME, len(rows), nb_masquees) + warn_no_tpl
         return view, msg
 
     except Exception:
@@ -2777,7 +2824,23 @@ def build_and_show(rows, nb_absent, nb_diff, nb_ok, nb_str_seul, nb_invalid,
     # BOUTON VUE 3D
     # -------------------------------------------------------------------------
     def on_view3d(s, e):
-        _view, msg = open_3d_cropbox(state["rows"], link_instance)
+        # Lignes selectionnees dans le tableau (surbrillance) en priorite ;
+        # a defaut, les lignes cochees comme avant.
+        cibles = [r for r in dg.SelectedItems]
+        if not cibles:
+            cibles = [r for r in state["rows"] if r.IsSelected]
+        _view, msg = open_3d_cropbox(cibles, link_instance)
+        if _view is not None:
+            # Les reservations STR concernees ressortent en selection Revit
+            try:
+                ids = ClrList[ElementId]()
+                for r in cibles:
+                    if r._host_elem is not None:
+                        ids.Add(r._host_elem.Id)
+                if ids.Count:
+                    uidoc.Selection.SetElementIds(ids)
+            except Exception:
+                pass
         forms.alert(msg, title="Vue 3D")
         if _view is not None:
             window.Close()
