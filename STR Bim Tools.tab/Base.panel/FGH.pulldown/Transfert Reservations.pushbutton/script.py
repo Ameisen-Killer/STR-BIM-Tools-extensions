@@ -2,7 +2,7 @@
 # =============================================================================
 # CONFIG
 # =============================================================================
-SCRIPT_VERSION = "3.7.0"
+SCRIPT_VERSION = "3.7.1"
 SCRIPT_AUTHOR  = "Tony VARIN"
 TOOL_NAME      = "Reservations RES vs STR"
 # =============================================================================
@@ -2100,23 +2100,22 @@ XAML = """
               CanUserResizeColumns="True"
               CanUserSortColumns="True"
               CanUserReorderColumns="False"
-              FontSize="12"
-              RowBackground="White">
+              FontSize="12">
       <DataGrid.RowStyle>
         <Style TargetType="DataGridRow">
           <Setter Property="Background" Value="{Binding RowBg}"/>
         </Style>
       </DataGrid.RowStyle>
       <DataGrid.Columns>
-        <!-- Bloc RES : 9 colonnes -->
+        <!-- Bloc RES : 9 colonnes. Les quatre premieres dans le meme ordre que le bloc STR -->
         <DataGridTextColumn Binding="{Binding RNum}"       Width="92"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
+        <DataGridTextColumn Binding="{Binding ValStatut}"  Width="78"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}" FontWeight="SemiBold"/>
+        <DataGridTextColumn Binding="{Binding ValDate}"    Width="76"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}" SortMemberPath="ValDateSort"/>
+        <DataGridTextColumn Binding="{Binding ValComment}" Width="120" IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
         <DataGridTextColumn Binding="{Binding RFamille}"   Width="125" IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
         <DataGridTextColumn Binding="{Binding RNiveau}"    Width="70"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
         <DataGridTextColumn Binding="{Binding RDemandeur}" Width="76"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
         <DataGridTextColumn Binding="{Binding RDateDem}"   Width="76"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}" SortMemberPath="DateDemSort"/>
-        <DataGridTextColumn Binding="{Binding ValStatut}"  Width="78"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}" FontWeight="SemiBold"/>
-        <DataGridTextColumn Binding="{Binding ValDate}"    Width="76"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}" SortMemberPath="ValDateSort"/>
-        <DataGridTextColumn Binding="{Binding ValComment}" Width="120" IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
         <DataGridTextColumn Binding="{Binding RMarques}"   Width="78"  IsReadOnly="True" HeaderStyle="{StaticResource HdrRes}"/>
         <!-- Bloc ecart et action : 5 colonnes -->
         <DataGridCheckBoxColumn x:Name="col_sel" Binding="{Binding IsSelected, Mode=TwoWay}"
@@ -2183,8 +2182,8 @@ GROUPES_COLONNES = (9, 5, 5)
 # En-tetes des colonnes (ordre identique aux colonnes XAML)
 COLUMN_HEADERS = [
     # Bloc RES
-    u"N° réservation", u"Famille", u"Niveau", u"Demandeur", u"Date dem.",
-    u"Statut VAL", u"Date VAL", u"Commentaire VAL", u"Marques",
+    u"N° réservation", u"Statut VAL", u"Date VAL", u"Commentaire VAL",
+    u"Famille", u"Niveau", u"Demandeur", u"Date dem.", u"Marques",
     # Bloc ecart et action
     u"", u"Géom.", u"Écart", u"Action à la synchro", u"Différences",
     # Bloc STR
